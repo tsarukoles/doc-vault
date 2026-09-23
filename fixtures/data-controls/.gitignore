@@ -1,0 +1,3 @@
+# Existing project ignores must remain intact.
+__pycache__/
+*.pyc

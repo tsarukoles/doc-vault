@@ -1,0 +1,13 @@
+{
+  "name": "doc-vault-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Evidence-backed local repository documentation and onboarding for Claude Code.",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "bin": { "doc-vault": "scripts/cli.mjs" },
+  "scripts": {
+    "test": "node --test",
+    "check": "node scripts/check-package.mjs"
+  }
+}

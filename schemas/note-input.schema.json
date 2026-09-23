@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "note-input.schema.json",
+  "title": "Doc Vault structured note publication",
+  "description": "Agent publication contract. Runtime checks also enforce source eligibility, current evidence and safe managed paths. Agents set a file-note slug to source_paths[0]; runtime derives its path from the source. Publication remains draft even if reviewed is requested.",
+  "type": "object",
+  "properties": {
+    "kind": { "enum": ["file", "component", "flow", "standard", "finding", "onboarding", "profile"] },
+    "title": { "type": "string", "minLength": 1 },
+    "slug": { "type": "string", "minLength": 1 },
+    "summary": { "type": "string", "minLength": 1 },
+    "sections": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "heading": { "type": "string", "minLength": 1 },
+          "text": { "type": "string", "minLength": 1 },
+          "evidence": { "type": "array", "minItems": 1, "items": { "$ref": "evidence.schema.json" } }
+        },
+        "required": ["heading", "text", "evidence"],
+        "additionalProperties": false
+      }
+    },
+    "source_paths": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "review_status": { "enum": ["draft", "reviewed"] }
+  },
+  "required": ["kind", "title", "slug", "summary", "sections", "source_paths", "review_status"],
+  "additionalProperties": false
+}

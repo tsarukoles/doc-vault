@@ -1,0 +1,5 @@
+name: example-validation
+stages:
+  - landing
+  - curated
+entrypoint: application.handler.handle

@@ -1,0 +1,3 @@
+rule_id,stage,description,enabled
+identifier_present,landing,Record includes an identifier,true
+amount_nonnegative,curated,Amount is a nonnegative number,true

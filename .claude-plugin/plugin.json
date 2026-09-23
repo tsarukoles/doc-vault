@@ -1,0 +1,5 @@
+{
+  "name": "doc-vault",
+  "version": "0.1.0",
+  "description": "Build and maintain a local, source-grounded repository wiki and onboarding guide using bounded analysis tools."
+}

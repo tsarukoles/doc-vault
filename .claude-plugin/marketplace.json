@@ -1,0 +1,11 @@
+{
+  "name": "doc-vault-tools",
+  "owner": { "name": "Doc Vault maintainers" },
+  "plugins": [
+    {
+      "name": "doc-vault",
+      "source": "./",
+      "description": "Local repository maps, evidence-backed wiki notes, and onboarding."
+    }
+  ]
+}

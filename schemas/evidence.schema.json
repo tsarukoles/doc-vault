@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "evidence.schema.json",
+  "title": "Doc Vault source evidence",
+  "description": "A current broker-approved source snapshot and either a text range or an extracted workbook selector. The broker also validates paths, hashes, ranges and selectors against live source.",
+  "type": "object",
+  "properties": {
+    "path": { "type": "string", "minLength": 1 },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "start_line": { "type": "integer", "minimum": 1 },
+    "end_line": { "type": "integer", "minimum": 1 },
+    "selector": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "workbook" },
+        "sheet": { "type": "string", "minLength": 1 },
+        "cell": { "type": "string", "pattern": "^[A-Z]{1,4}[1-9][0-9]{0,7}$" }
+      },
+      "oneOf": [
+        { "required": ["kind"], "not": { "anyOf": [{ "required": ["sheet"] }, { "required": ["cell"] }] } },
+        { "required": ["sheet"], "not": { "required": ["kind"] } }
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": ["path", "sha256"],
+  "oneOf": [
+    { "required": ["start_line", "end_line"], "not": { "required": ["selector"] } },
+    { "required": ["selector"], "not": { "anyOf": [{ "required": ["start_line"] }, { "required": ["end_line"] }] } }
+  ],
+  "additionalProperties": false
+}
