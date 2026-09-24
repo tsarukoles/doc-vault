@@ -1,6 +1,6 @@
-# Approval for a Doc Vault command
+# Approval for an EDW Doc command
 
-Version 0.1.3 introduces one explicit approval for each `/doc-vault:*` invocation. The command begins with `vault_begin`, reuses the returned `run_id` for all its broker operations and batches, and calls `vault_end` before returning. Declining the initial approval ends the command; the agent must not retry the prompt or switch to other tools.
+Version 0.2.0 retains the one explicit approval per invocation introduced in 0.1.3, now under the `/edw-doc:*` command names. The command begins with `vault_begin`, reuses the returned `run_id` for all its broker operations and batches, and calls `vault_end` before returning. Declining the initial approval ends the command; the agent must not retry the prompt or switch to other tools.
 
 The approval identifies the configured repository and the requested command. Source files remain read-only. The existing broker controls managed output paths, evidence, annotations, and the narrow root `.gitignore` additions. It does not grant shell execution, arbitrary writes, source edits, Git mutations, or external publication. The host's configured model still processes selected source evidence.
 
@@ -25,7 +25,7 @@ Every existing MCP operation requires `run_id`. The broker checks it and its com
 
 ## Ending and interruption
 
-`vault_end` closes the run. A new approval replaces an older grant for the same session. New user prompts, session starts/resumes, session ends, and completion of the Doc Vault curator, standards, or reviewer agent revoke old grants through lifecycle markers. Compaction, read-only worker completion, and unrelated subagent completion do not revoke them. MCP cancellation notifications also revoke grants. The next user prompt closes any remaining grant after an interruption that emitted no cancellation notification. Broker restart loses all grants. Four hours without an authorized operation expires an abandoned grant; there is no step, token, or total-runtime cap on an active grant.
+`vault_end` closes the run. A new approval replaces an older grant for the same session. New user prompts, session starts/resumes, session ends, and completion of the EDW Doc curator, standards, or reviewer agent revoke old grants through lifecycle markers. Compaction, read-only worker completion, and unrelated subagent completion do not revoke them. MCP cancellation notifications also revoke grants. The next user prompt closes any remaining grant after an interruption that emitted no cancellation notification. Broker restart loses all grants. Four hours without an authorized operation expires an abandoned grant; there is no step, token, or total-runtime cap on an active grant.
 
 Lifecycle hooks write only small random-generation markers in the current user's temporary directory, keyed by hashes of the repository and host session ID. They contain no source content or approval tokens. This is ephemeral plugin bookkeeping, separate from repository output. Missing or unreadable markers prevent a new run or further broker operations; hook errors themselves never block development. These are checks inside a trusted host process, not OS isolation from another process running as the same user.
 
@@ -33,17 +33,17 @@ The finish maintenance hook now reports a reminder instead of returning `decisio
 
 ## Update and verify
 
-Update/reload the installed plugin or start a new Claude Code session. For a development checkout, load it with `claude --plugin-dir /absolute/path/to/doc-plugin`. Existing locally installed instructions can be updated by re-running the documented setup command; unchanged owned files are updated, and user edits are preserved.
+Follow the [rename upgrade instructions](installation.md#upgrade-from-the-old-plugin-name) when moving from `doc-vault` to `edw-doc`, then start a new Claude Code session. For a development checkout, load it with `claude --plugin-dir /absolute/path/to/edw-doc-plugin`. Existing locally installed instructions can be updated by re-running the documented setup command; unchanged owned files are updated, and user edits are preserved. Retained `.claude/doc-vault/` integration paths do not require manual renaming.
 
 In a small test repository, verify:
 
-1. Invoke `/doc-vault:build`. Approve `vault_begin` once; inspect that its prompt names the intended root and command.
+1. Invoke `/edw-doc:build`. Approve `vault_begin` once; inspect that its prompt names the intended root and command.
 2. Confirm ordinary context reads, source reads, scan, and publication do not prompt again. They must all include the same `run_id`.
 3. Repeat with `standards` and `sync`, including enough work to cross several batches or a compaction. Each new command gets one new approval.
 4. Decline the approval. No broker read or write from that invocation should execute and the command should finish without another attempt.
 5. Cancel a run, send a new prompt, and verify the previous token is rejected. Verify normal completion calls `vault_end` and subsequent use is rejected.
 6. Confirm `ask`/`status` cannot scan or publish, and `standards` cannot publish general notes. Source bytes and user annotations must remain intact.
-7. End an ordinary coding task while documentation is outdated. Its finish must not be blocked by Doc Vault.
+7. End an ordinary coding task while documentation is outdated. Its finish must not be blocked by EDW Doc.
 
 Protocol and local boundary tests simulate dispatch after approval; they cannot prove that a real CLI displayed the prompt or inherited skill grants in a forked agent. Count actual prompts in the intended Claude CLI/provider environment before claiming the one-prompt experience is verified. Claude CLI was unavailable in the implementation environment.
 

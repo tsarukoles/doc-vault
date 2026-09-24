@@ -1,5 +1,7 @@
 # Implementation decisions and acceptance plan
 
+> Historical record: names and examples below describe earlier Doc Vault releases. Since 0.2.0, use EDW Doc and the current [team guide](../GET-STARTED.md).
+
 ## Product decisions
 
 | Decision | Reason |

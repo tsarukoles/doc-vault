@@ -3,13 +3,19 @@ import path from 'node:path';
 import { gitRead } from './inventory.mjs';
 import { checkedPath, ensureIgnore, readBytes, removeOwnedFile, rootDirectory, sha256, validateVaultName, writeAtomic } from './security.mjs';
 
-const BASE = '.claude/doc-vault';
-const MANIFEST = `${BASE}/manifest.json`;
-const CONFIG = `${BASE}/config.json`;
-const INSTRUCTIONS = `${BASE}/instructions.md`;
-const RULE = '.claude/rules/doc-vault.md';
-const ENTRYPOINTS = new Set(['CLAUDE.md', '.claude/CLAUDE.md', 'AGENTS.md', '.claude/AGENTS.md', RULE]);
-const OWNED_FILES = new Set([INSTRUCTIONS, CONFIG, RULE, 'CLAUDE.md']);
+function integrationLayout(name) {
+  const base = `.claude/${name}`;
+  const rule = `.claude/rules/${name}.md`;
+  const instructions = `${base}/instructions.md`;
+  const config = `${base}/config.json`;
+  return { name, manifest: `${base}/manifest.json`, config, instructions, rule,
+    entrypoints: new Set(['CLAUDE.md', '.claude/CLAUDE.md', 'AGENTS.md', '.claude/AGENTS.md', rule]),
+    ownedFiles: new Set([instructions, config, rule, 'CLAUDE.md']) };
+}
+const CURRENT_LAYOUT = integrationLayout('edw-doc');
+// Existing ownership records must keep their original paths, block bytes, and
+// hashes. Renaming them in place would make safe updates/removal impossible.
+const LEGACY_LAYOUT = integrationLayout('doc-vault');
 const HASH = /^[a-f0-9]{64}$/;
 const ACTIVATION_WARNING = 'Instruction loading is unverified: host version, global instructions, managed policy, and enabled plugins may affect activation.';
 
@@ -45,12 +51,12 @@ function requireUntracked(root, file) {
   checkedPath(root, file, { allowMissing: true, write: true });
 }
 
-function importLine(entrypoint) {
-  return `@${path.posix.relative(path.posix.dirname(entrypoint), INSTRUCTIONS)}`;
+function importLine(entrypoint, layout) {
+  return `@${path.posix.relative(path.posix.dirname(entrypoint), layout.instructions)}`;
 }
 
-function markedBlock(entrypoint, eol = '\n') {
-  return ['<!-- doc-vault:begin -->', importLine(entrypoint), '<!-- doc-vault:end -->', ''].join(eol);
+function markedBlock(entrypoint, layout, eol = '\n') {
+  return [`<!-- ${layout.name}:begin -->`, importLine(entrypoint, layout), `<!-- ${layout.name}:end -->`, ''].join(eol);
 }
 
 function importsInMarkdown(bytes, { requireClosed = false } = {}) {
@@ -75,7 +81,7 @@ function importsInMarkdown(bytes, { requireClosed = false } = {}) {
   return imports;
 }
 
-function hasInstructionImport(root, entrypoint) {
+function hasInstructionImport(root, entrypoint, layout) {
   const visited = new Set();
   const visit = (file, depth) => {
     if (depth > 4 || visited.size >= 32 || visited.has(file)) return false;
@@ -87,7 +93,7 @@ function hasInstructionImport(root, entrypoint) {
       if (imported.includes('\\') || path.posix.isAbsolute(imported) || path.win32.isAbsolute(imported)) continue;
       const destination = path.posix.normalize(path.posix.join(path.posix.dirname(file), imported));
       if (destination === '..' || destination.startsWith('../')) continue;
-      if (destination === INSTRUCTIONS) return true;
+      if (destination === layout.instructions) return true;
       if (destination.endsWith('.md') && visit(destination, depth + 1)) return true;
     }
     return false;
@@ -96,7 +102,7 @@ function hasInstructionImport(root, entrypoint) {
 }
 
 function instructionText(vaultName) {
-  return `# Doc Vault local maintenance\n\nThis file applies only to the Doc Vault documentation workflow. It does not restrict the host coding agent's normal, user-authorized repository work.\n\n1. Read source through the plugin's documentation tools; write generated documentation only inside \`${vaultName}/\`. Setup alone owns the local integration and narrow ignore-file additions.\n2. Hook notices are reminders only. Run \`/doc-vault:sync\` when the user requests documentation work; never pause or extend an ordinary coding task to force maintenance.\n3. Reconcile the current checkout before publication. Changed, new, renamed, and deleted sources can invalidate dependent notes, flows, onboarding pages, diagrams, and standards assessments. Preserve annotations and user-edited generated files.\n4. Request the single command approval through vault_begin when a Doc Vault skill starts, reuse its run_id across batches, and close it with vault_end. Respect declined approval and never retry it automatically.\n5. Distinguish current source coverage from completed AI review. Do not claim freshness, compliance, or human approval without evidence. Standards review and approval remain separate work.\n6. Explain purpose, inputs, outputs, ordered steps, checks, failure paths, and source-backed findings in simple language. Use numbered procedures when order matters, small Mermaid diagrams for supported flows, and ordinary wiki links for navigation.\n\nMaintenance runs during supported host events. External edits are caught at the next reconciliation; there is no always-on background AI worker. The optional command-line watcher performs static refresh only. Plugin hooks must be loaded for automatic event handling.\n`;
+  return `# EDW Doc local maintenance\n\nThis file applies only to the EDW Doc documentation workflow. It does not restrict the host coding agent's normal, user-authorized repository work.\n\n1. Read source through the plugin's documentation tools; write generated documentation only inside \`${vaultName}/\`. Setup alone owns the local integration and narrow ignore-file additions.\n2. Hook notices are reminders only. Run \`/edw-doc:sync\` when the user requests documentation work; never pause or extend an ordinary coding task to force maintenance.\n3. Reconcile the current checkout before publication. Changed, new, renamed, and deleted sources can invalidate dependent notes, flows, onboarding pages, diagrams, and standards assessments. Preserve annotations and user-edited generated files.\n4. Request the single command approval through vault_begin when an EDW Doc skill starts, reuse its run_id across batches, and close it with vault_end. Respect declined approval and never retry it automatically.\n5. Distinguish current source coverage from completed AI review. Do not claim freshness, compliance, or human approval without evidence. Standards review and approval remain separate work.\n6. Explain purpose, inputs, outputs, ordered steps, checks, failure paths, and source-backed findings in simple language. Use numbered procedures when order matters, small Mermaid diagrams for supported flows, and ordinary wiki links for navigation.\n\nMaintenance runs during supported host events. External edits are caught at the next reconciliation; there is no always-on background AI worker. The optional command-line watcher performs static refresh only. Plugin hooks must be loaded for automatic event handling.\n`;
 }
 
 function configFor(vaultName) {
@@ -111,24 +117,40 @@ function validConfig(value, vaultName) {
   return value;
 }
 
-function loadManifest(root) {
-  if (!exists(root, MANIFEST, { writable: true })) return null;
-  const state = JSON.parse(readBytes(root, MANIFEST, 128 * 1024).toString('utf8'));
-  if (!state || state.version !== 1 || !ENTRYPOINTS.has(state.entrypoint) || !Array.isArray(state.entries) || state.entries.length > 4 || (state.removed !== undefined && state.removed !== true)) throw new Error('Invalid integration ownership manifest.');
+function selectLayout(root) {
+  const current = exists(root, CURRENT_LAYOUT.manifest, { writable: true });
+  const legacy = exists(root, LEGACY_LAYOUT.manifest, { writable: true });
+  if (current && legacy) throw new Error('Both EDW Doc and legacy Doc Vault integration manifests exist. Review them before setup or removal; no integration files were changed.');
+  const other = current ? LEGACY_LAYOUT : legacy ? CURRENT_LAYOUT : null;
+  if (other && [other.instructions, other.config, other.rule].some(file => exists(root, file))) throw new Error('Conflicting current and legacy integration content exists. Review the duplicate integration before setup or removal; no integration files were changed.');
+  return legacy ? LEGACY_LAYOUT : CURRENT_LAYOUT;
+}
+
+function loadManifest(root, layout) {
+  if (!exists(root, layout.manifest, { writable: true })) return null;
+  const state = JSON.parse(readBytes(root, layout.manifest, 128 * 1024).toString('utf8'));
+  if (!state || state.version !== 1 || !layout.entrypoints.has(state.entrypoint) || !Array.isArray(state.entries) || state.entries.length > 4 || (state.removed !== undefined && state.removed !== true)) throw new Error('Invalid integration ownership manifest.');
   validateVaultName(state.vaultName);
   const seen = new Set();
   for (const entry of state.entries) {
     if (!entry || seen.has(entry.path) || !HASH.test(entry.sha256)) throw new Error('Invalid integration ownership record.');
     seen.add(entry.path);
     if (entry.kind === 'file') {
-      if (!OWNED_FILES.has(entry.path)) throw new Error('Ownership record is outside the integration file allowlist.');
+      if (!layout.ownedFiles.has(entry.path)) throw new Error('Ownership record is outside the integration file allowlist.');
     } else if (entry.kind === 'block') {
-      if (!ENTRYPOINTS.has(entry.path) || entry.path === RULE || entry.path !== state.entrypoint) throw new Error('Invalid integration block location.');
-      const allowed = ['\n', '\r\n'].flatMap(eol => [markedBlock(entry.path, eol), `${eol}${markedBlock(entry.path, eol)}`]);
+      if (!layout.entrypoints.has(entry.path) || entry.path === layout.rule || entry.path !== state.entrypoint) throw new Error('Invalid integration block location.');
+      const allowed = ['\n', '\r\n'].flatMap(eol => [markedBlock(entry.path, layout, eol), `${eol}${markedBlock(entry.path, layout, eol)}`]);
       if (!allowed.includes(entry.content) || sha256(entry.content) !== entry.sha256) throw new Error('Invalid integration block content.');
     } else throw new Error('Unknown integration ownership kind.');
   }
   return state;
+}
+
+function assertNoOrphanedLegacyIntegration(root) {
+  const legacyFiles = [LEGACY_LAYOUT.instructions, LEGACY_LAYOUT.config, LEGACY_LAYOUT.rule];
+  const entrypoints = ['CLAUDE.md', '.claude/CLAUDE.md', 'AGENTS.md', '.claude/AGENTS.md', 'CLAUDE.local.md', '.claude/CLAUDE.local.md', 'AGENT.md'];
+  const existingReference = entrypoints.some(file => exists(root, file) && hasInstructionImport(root, file, LEGACY_LAYOUT));
+  if (legacyFiles.some(file => exists(root, file)) || existingReference) throw new Error('Legacy Doc Vault integration content or imports remain without an ownership manifest. Preserve and review them before setup to avoid duplicate instructions.');
 }
 
 function json(value) { return `${JSON.stringify(value, null, 2)}\n`; }
@@ -146,17 +168,17 @@ function appendRootIgnore(root) {
   return true;
 }
 
-function chooseEntrypoint(root, warnings) {
+function chooseEntrypoint(root, warnings, layout) {
   const candidates = ['CLAUDE.md', '.claude/CLAUDE.md', 'AGENTS.md', '.claude/AGENTS.md', 'CLAUDE.local.md', '.claude/CLAUDE.local.md', 'AGENT.md'];
   const present = new Set(candidates.filter(file => exists(root, file)));
   if (present.has('CLAUDE.local.md') || present.has('.claude/CLAUDE.local.md')) {
     warnings.push('Existing local Claude instructions were preserved; the ignored rule adapter avoids changing instruction precedence.');
-    return { path: RULE, kind: 'file' };
+    return { path: layout.rule, kind: 'file' };
   }
   const claude = ['CLAUDE.md', '.claude/CLAUDE.md'].filter(file => present.has(file));
   if (claude.length === 1) {
     const file = claude[0];
-    if (hasInstructionImport(root, file)) return { path: file, kind: 'reuse' };
+    if (hasInstructionImport(root, file, layout)) return { path: file, kind: 'reuse' };
     if (!tracked(root, file) && ignored(root, file)) {
       try {
         const bytes = readBytes(root, file, 1024 * 1024);
@@ -165,24 +187,24 @@ function chooseEntrypoint(root, warnings) {
         return { path: file, kind: 'block' };
       } catch {
         warnings.push(`Preserved ${file}: its contents cannot safely receive a managed block; setup uses the local rule adapter.`);
-        return { path: RULE, kind: 'file' };
+        return { path: layout.rule, kind: 'file' };
       }
     }
     warnings.push(`Preserved ${file}: existing tracked or unignored instructions use the ignored rule adapter.`);
-    return { path: RULE, kind: 'file' };
+    return { path: layout.rule, kind: 'file' };
   }
   if (present.size) {
     warnings.push('Existing instruction files were preserved. Host support or instruction precedence cannot be verified, so setup uses an ignored rule adapter. AGENT.md is not assumed to load automatically.');
-    return { path: RULE, kind: 'file' };
+    return { path: layout.rule, kind: 'file' };
   }
   return { path: 'CLAUDE.md', kind: 'file' };
 }
 
-function desiredFile(file, vaultName) {
-  if (file === INSTRUCTIONS) return instructionText(vaultName);
-  if (file === CONFIG) return json(configFor(vaultName));
-  if (file === RULE) return '# Doc Vault integration\n\nFor the Doc Vault documentation workflow, read `.claude/doc-vault/instructions.md` from this repository before maintenance. Follow that file only for Doc Vault work; preserve the host coding agent\'s normal permissions.\n';
-  if (file === 'CLAUDE.md') return `# Local project instructions\n\n${markedBlock(file)}`;
+function desiredFile(file, vaultName, layout) {
+  if (file === layout.instructions) return instructionText(vaultName);
+  if (file === layout.config) return json(configFor(vaultName));
+  if (file === layout.rule) return `# EDW Doc integration\n\nFor the EDW Doc documentation workflow, read \`${layout.instructions}\` from this repository before maintenance. Follow that file only for EDW Doc work; preserve the host coding agent's normal permissions.\n`;
+  if (file === 'CLAUDE.md') return `# Local project instructions\n\n${markedBlock(file, layout)}`;
   throw new Error('Unsupported integration output.');
 }
 
@@ -194,42 +216,46 @@ function occurrences(bytes, needle) {
 
 export function integrationStatus(rootInput) {
   const root = rootDirectory(rootInput);
+  const layout = selectLayout(root);
   // Ordinary analysis and read-only session hints also work outside Git. Only
   // an installed integration requires the stricter setup metadata contract.
-  if (!exists(root, MANIFEST, { writable: true })) return { installed: false, activation: 'unverified', maintenanceEnabled: false, warnings: [] };
+  if (!exists(root, layout.manifest, { writable: true })) return { installed: false, activation: 'unverified', maintenanceEnabled: false, warnings: [] };
   rootForSetup(root);
-  const state = loadManifest(root);
+  const state = loadManifest(root, layout);
   if (!state) return { installed: false, activation: 'unverified', maintenanceEnabled: false, warnings: [] };
   const warnings = [ACTIVATION_WARNING];
+  if (layout === LEGACY_LAYOUT) warnings.push('Existing Doc Vault integration paths are retained for compatibility. Setup updates unchanged owned instructions to EDW Doc commands; use uninstall then setup only if you want new integration paths.');
   let maintenanceEnabled = false;
-  try { maintenanceEnabled = validConfig(JSON.parse(readBytes(root, CONFIG, 32 * 1024)), state.vaultName).maintenance.enabled; }
+  try { maintenanceEnabled = validConfig(JSON.parse(readBytes(root, layout.config, 32 * 1024)), state.vaultName).maintenance.enabled; }
   catch (error) { warnings.push(`Maintenance disabled: ${error.message}`); }
-  if (state.removed || !state.entries.some(entry => entry.path === INSTRUCTIONS) || !state.entries.some(entry => entry.path === CONFIG)) {
+  if (state.removed || !state.entries.some(entry => entry.path === layout.instructions) || !state.entries.some(entry => entry.path === layout.config)) {
     maintenanceEnabled = false;
     warnings.push('Integration removal is incomplete or required ownership records are missing; automatic maintenance is disabled.');
   }
-  if (tracked(root, MANIFEST)) { maintenanceEnabled = false; warnings.push('Integration manifest is tracked; automatic maintenance is disabled.'); }
-  if (!state.entries.some(entry => entry.path === state.entrypoint) && !hasInstructionImport(root, state.entrypoint)) {
+  if (tracked(root, layout.manifest)) { maintenanceEnabled = false; warnings.push('Integration manifest is tracked; automatic maintenance is disabled.'); }
+  if (!state.entries.some(entry => entry.path === state.entrypoint) && !hasInstructionImport(root, state.entrypoint, layout)) {
     maintenanceEnabled = false;
     warnings.push('The reused instruction reference is no longer present; automatic maintenance is disabled.');
   }
   for (const entry of state.entries) {
     const bytes = currentBytes(root, entry.path);
     const unchanged = bytes && (entry.kind === 'block' ? occurrences(bytes, Buffer.from(entry.content)).length === 1 : sha256(bytes) === entry.sha256);
-    if (!unchanged && entry.path !== CONFIG) { warnings.push(`Missing or edited integration content preserved: ${entry.path}`); maintenanceEnabled = false; }
+    if (!unchanged && entry.path !== layout.config) { warnings.push(`Missing or edited integration content preserved: ${entry.path}`); maintenanceEnabled = false; }
     if (tracked(root, entry.path)) { warnings.push(`Integration content is tracked: ${entry.path}`); maintenanceEnabled = false; }
   }
-  return { installed: !state.removed, vaultName: state.vaultName, entrypoint: state.entrypoint, activation: 'unverified', maintenanceEnabled, warnings };
+  return { installed: !state.removed, vaultName: state.vaultName, entrypoint: state.entrypoint, integrationPath: path.posix.dirname(layout.manifest), activation: 'unverified', maintenanceEnabled, warnings };
 }
 
-export function installIntegration(rootInput, { vaultName = 'edw-doc' } = {}) {
-  validateVaultName(vaultName);
+export function installIntegration(rootInput, options = {}) {
   const root = rootForSetup(rootInput);
+  const layout = selectLayout(root);
   const warnings = [];
   const changes = [];
-  const prior = loadManifest(root);
+  const prior = loadManifest(root, layout);
+  const vaultName = options.vaultName ?? prior?.vaultName ?? 'edw-doc';
+  validateVaultName(vaultName);
   if (prior?.removed) throw new Error('User-edited content from a removed integration remains. Review the preserved ownership record before installing again.');
-  requireUntracked(root, MANIFEST);
+  requireUntracked(root, layout.manifest);
   if (tracked(root, vaultName)) throw new Error('The configured vault contains tracked files. Choose an untracked vault before setup.');
   const vaultPath = checkedPath(root, vaultName, { allowMissing: true, write: true });
   if (fs.existsSync(vaultPath) && !fs.lstatSync(vaultPath).isDirectory()) throw new Error('The configured vault path must be an ordinary directory.');
@@ -238,12 +264,13 @@ export function installIntegration(rootInput, { vaultName = 'edw-doc' } = {}) {
   const state = prior || { version: 1, vaultName, entrypoint: null, entries: [] };
   const planned = [];
   if (!prior) {
-    const selected = chooseEntrypoint(root, warnings);
+    assertNoOrphanedLegacyIntegration(root);
+    const selected = chooseEntrypoint(root, warnings, layout);
     state.entrypoint = selected.path;
-    for (const file of [INSTRUCTIONS, CONFIG, ...(selected.kind === 'file' ? [selected.path] : [])]) {
+    for (const file of [layout.instructions, layout.config, ...(selected.kind === 'file' ? [selected.path] : [])]) {
       requireUntracked(root, file);
       if (exists(root, file, { writable: true })) throw new Error(`Integration namespace collision; existing file preserved: ${file}`);
-      const content = desiredFile(file, vaultName);
+      const content = desiredFile(file, vaultName, layout);
       planned.push({ path: file, content: Buffer.from(content), before: null });
       state.entries.push({ path: file, kind: 'file', sha256: sha256(content) });
     }
@@ -252,11 +279,11 @@ export function installIntegration(rootInput, { vaultName = 'edw-doc' } = {}) {
       requireUntracked(root, selected.path);
       const before = readBytes(root, selected.path, 1024 * 1024);
       const text = before.toString('utf8');
-      const imported = hasInstructionImport(root, selected.path);
+      const imported = hasInstructionImport(root, selected.path, layout);
       if (!imported) {
-        if (text.includes('<!-- doc-vault:begin -->') || text.includes('<!-- doc-vault:end -->')) throw new Error('Unowned Doc Vault markers already exist; preserve and review them before setup.');
+        if (text.includes(`<!-- ${layout.name}:begin -->`) || text.includes(`<!-- ${layout.name}:end -->`)) throw new Error('Unowned EDW Doc markers already exist; preserve and review them before setup.');
         const eol = text.includes('\r\n') ? '\r\n' : '\n';
-        const content = `${before.length && !text.endsWith('\n') ? eol : ''}${markedBlock(selected.path, eol)}`;
+        const content = `${before.length && !text.endsWith('\n') ? eol : ''}${markedBlock(selected.path, layout, eol)}`;
         planned.push({ path: selected.path, content: Buffer.concat([before, Buffer.from(content)]), before });
         state.entries.push({ path: selected.path, kind: 'block', sha256: sha256(content), content });
       } else warnings.push(`Existing import reused in ${selected.path}; setup does not own or remove that reference.`);
@@ -265,7 +292,7 @@ export function installIntegration(rootInput, { vaultName = 'edw-doc' } = {}) {
     for (const entry of state.entries) {
       requireUntracked(root, entry.path);
       const before = currentBytes(root, entry.path);
-      if (entry.path === CONFIG) {
+      if (entry.path === layout.config) {
         if (before) validConfig(JSON.parse(before.toString('utf8')), vaultName);
         else warnings.push('Configuration is missing; maintenance remains disabled. Remove and set up the integration to restore it.');
         continue;
@@ -275,7 +302,7 @@ export function installIntegration(rootInput, { vaultName = 'edw-doc' } = {}) {
         continue;
       }
       if (!before || sha256(before) !== entry.sha256) { warnings.push(`Edited or missing integration file preserved: ${entry.path}`); continue; }
-      const content = Buffer.from(desiredFile(entry.path, vaultName));
+      const content = Buffer.from(desiredFile(entry.path, vaultName, layout));
       if (!content.equals(before)) { planned.push({ path: entry.path, content, before }); entry.sha256 = sha256(content); }
     }
   }
@@ -290,18 +317,19 @@ export function installIntegration(rootInput, { vaultName = 'edw-doc' } = {}) {
     writeAtomic(root, operation.path, operation.content);
     changes.push(operation.path);
   }
-  requireUntracked(root, MANIFEST);
+  requireUntracked(root, layout.manifest);
   const nextManifest = json(state);
-  if (!exists(root, MANIFEST) || readBytes(root, MANIFEST).toString('utf8') !== nextManifest) { writeAtomic(root, MANIFEST, nextManifest); changes.push(MANIFEST); }
+  if (!exists(root, layout.manifest) || readBytes(root, layout.manifest).toString('utf8') !== nextManifest) { writeAtomic(root, layout.manifest, nextManifest); changes.push(layout.manifest); }
   const status = integrationStatus(root);
   return { ...status, changes: [...new Set(changes)], warnings: [...new Set([...warnings, ...status.warnings])] };
 }
 
 export function removeIntegration(rootInput) {
   const root = rootForSetup(rootInput);
-  const state = loadManifest(root);
+  const layout = selectLayout(root);
+  const state = loadManifest(root, layout);
   if (!state) return { installed: false, removed: [], preserved: [], warnings: [] };
-  requireUntracked(root, MANIFEST);
+  requireUntracked(root, layout.manifest);
   const removed = [], preserved = [], remaining = [], operations = [];
   for (const entry of state.entries) {
     // Tracked or unsafe paths block uninstall before any file is modified.
@@ -323,10 +351,10 @@ export function removeIntegration(rootInput) {
     else writeAtomic(root, operation.entry.path, operation.content);
     removed.push(operation.entry.path);
   }
-  requireUntracked(root, MANIFEST);
-  if (remaining.length) writeAtomic(root, MANIFEST, json({ ...state, removed: true, entries: remaining }));
-  else { removeOwnedFile(root, MANIFEST); removed.push(MANIFEST); }
+  requireUntracked(root, layout.manifest);
+  if (remaining.length) writeAtomic(root, layout.manifest, json({ ...state, removed: true, entries: remaining }));
+  else { removeOwnedFile(root, layout.manifest); removed.push(layout.manifest); }
   const warnings = preserved.length ? ['User-edited integration content and its ownership record were retained. Automatic maintenance is disabled; ignore rules and directories are always preserved.'] : [];
-  if (removed.includes(INSTRUCTIONS) && !state.entries.some(entry => entry.path === state.entrypoint) && hasInstructionImport(root, state.entrypoint)) warnings.push(`Existing unowned instruction reference remains in ${state.entrypoint}, but its Doc Vault target was removed. Review that reference manually; uninstall did not edit it.`);
+  if (removed.includes(layout.instructions) && !state.entries.some(entry => entry.path === state.entrypoint) && hasInstructionImport(root, state.entrypoint, layout)) warnings.push(`Existing unowned instruction reference remains in ${state.entrypoint}, but its EDW Doc target was removed. Review that reference manually; uninstall did not edit it.`);
   return { installed: false, removed, preserved, warnings };
 }

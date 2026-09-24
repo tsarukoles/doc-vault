@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "assessment-input.schema.json",
-  "title": "Doc Vault per-file standards assessment",
+  "title": "EDW Doc per-file standards assessment",
   "description": "Assessment binds one currently eligible file to exact current rule revisions. The runtime checks applicability, source and rule identity, evidence, and the declared-authority requirement for noncompliant. Not-assessed is a coverage state, not a submitted verdict.",
   "type": "object",
   "properties": {

@@ -1,5 +1,7 @@
 # Research: codebase wikis and agent context systems
 
+> Historical record: names and examples below describe earlier Doc Vault releases. Since 0.2.0, use EDW Doc and the current [team guide](../../GET-STARTED.md).
+
 Research date: 2026-09-23. Scope: ideas useful to Doc Vault 0.1.1, whose runtime reads one approved repository, writes only its local ignored vault and the narrow root ignore-rule exception, and uses the host's model. This is a design review, not a benchmark of the listed products. No external implementation was installed, executed, or copied.
 
 Primary project documentation and selected implementation files were inspected. Links use the projects' moving `main` branches unless stated otherwise; they document what was visible on the research date, not an immutable release audit. “Implemented” below means a matching code path was inspected, not that it was independently tested. “Documented” means the project describes the behavior but that particular runtime path was not verified.

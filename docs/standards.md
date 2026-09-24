@@ -1,6 +1,6 @@
 # Standards catalog and assessments
 
-Run `/doc-vault:build` or `/doc-vault:sync` first, then `/doc-vault:standards`. The standards skill runs a separate specialist. It inspects the repository's languages, tests, CI/CD definitions, database work, and file/data transformations where those capabilities exist. It reads source and records evidence; it does not run linters, tests, database commands, or cloud operations.
+Run `/edw-doc:build` or `/edw-doc:sync` first, then `/edw-doc:standards`. The standards skill runs a separate specialist. It inspects the repository's languages, tests, CI/CD definitions, database work, and file/data transformations where those capabilities exist. It reads source and records evidence; it does not run linters, tests, database commands, or cloud operations.
 
 ## What appears in the vault
 
@@ -48,9 +48,9 @@ These are source-level agent assessments, not a certification. A `complies` resu
 
 ## Maintenance and review
 
-After code, configuration, or standards change, run `/doc-vault:sync`, then `/doc-vault:standards` for affected scope. The runtime tracks stale records when their file, governing evidence, or rule changes. A plugin update may also change bundled guidance; installing it does not complete reassessment of every local vault.
+After code, configuration, or standards change, run `/edw-doc:sync`, then `/edw-doc:standards` for affected scope. The runtime tracks stale records when their file, governing evidence, or rule changes. A plugin update may also change bundled guidance; installing it does not complete reassessment of every local vault.
 
-Use `/doc-vault:review` to challenge important or disputed results in a separate context. Ask the reviewer to inspect scope, authority, original source, alternate paths, and legitimate exceptions. It records a qualified note review; it cannot silently replace the specialist's assessment. Preserve human context under `edw-doc/annotations/`.
+Use `/edw-doc:review` to challenge important or disputed results in a separate context. Ask the reviewer to inspect scope, authority, original source, alternate paths, and legitimate exceptions. It records a qualified note review; it cannot silently replace the specialist's assessment. Preserve human context under `edw-doc/annotations/`.
 
 ## Extending rules safely
 

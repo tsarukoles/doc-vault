@@ -8,7 +8,8 @@ import { inventory, identityAndChanges, stripContent, inventoryDigest, gitState,
 import { analyzeRepository } from './analyze.mjs';
 import { renderVault, notePath, renderAnalysisIndex } from './render.mjs';
 import { inspectWorkbook } from './readers.mjs';
-import { makeRule, reconcileStandards, standardsFingerprint, fileStandards, standardsCoverage, renderStandards, withStandards, applies, RESULTS, START, END } from './standards.mjs';
+import { PRODUCT, ownsVault } from './identity.mjs';
+import { makeRule, reconcileStandards, standardsFingerprint, fileStandards, standardsCoverage, renderStandards, withStandards, applies, RESULTS, MANAGED_MARKERS } from './standards.mjs';
 
 export const PACKAGE_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 export const VERSION = JSON.parse(fs.readFileSync(path.join(PACKAGE_ROOT,'package.json'),'utf8')).version;
@@ -18,7 +19,7 @@ const noChanges=changes=>!Object.values(changes).some(values=>values.length);
 const textValue=(value,max=16000)=>{
   if(typeof value!=='string'||value.length>max||value.includes('\0')) throw new Error('Invalid or oversized text field.');
   if(/<\/?[a-z][^>]*>|!\[/i.test(value)) throw new Error('Raw HTML and image embeds are not allowed in generated notes.');
-  if(value.includes(START)||value.includes(END))throw new Error('Managed standards markers cannot be supplied by the model.');
+  if(MANAGED_MARKERS.some(marker=>value.includes(marker)))throw new Error('Managed standards markers cannot be supplied by the model.');
   return value;
 };
 const yaml=value=>JSON.stringify(value).replace(/\[/g,'\\u005b').replace(/\]/g,'\\u005d');
@@ -52,10 +53,10 @@ export async function createEngine(target,{vaultName='edw-doc'}={}) {
     if(fs.existsSync(absolute)) {
       if(!fs.lstatSync(absolute).isDirectory()) throw new Error('Vault path is not an ordinary directory.');
       const items=fs.readdirSync(absolute);
-      if(items.length && !fs.existsSync(vaultFile('.system/owner.json',true))) throw new Error('Existing nonempty directory is not a Doc Vault. Refusing to adopt or overwrite it.');
+      if(items.length && !fs.existsSync(vaultFile('.system/owner.json',true))) throw new Error('Existing nonempty directory is not an EDW Doc vault. Refusing to adopt or overwrite it.');
       if(fs.existsSync(vaultFile('.system/owner.json',true))) {
         const owner=JSON.parse(readBytes(absolute,'.system/owner.json').toString('utf8'));
-        if(owner.product!=='doc-vault') throw new Error('Unrecognized vault ownership marker.');
+        if(!ownsVault(owner)) throw new Error('Unrecognized vault ownership marker.');
       }
     }
     assertUntrackedVault(root,vaultName);
@@ -65,7 +66,7 @@ export async function createEngine(target,{vaultName='edw-doc'}={}) {
       const legacy=checkedPath(root,'doc-vault',{allowMissing:true});
       if(fs.existsSync(legacy)&&fs.lstatSync(legacy).isDirectory()&&fs.existsSync(checkedPath(legacy,'.system/owner.json',{allowMissing:true}))) {
         const marker=JSON.parse(readBytes(legacy,'.system/owner.json',8192).toString('utf8'));
-        if(marker.product==='doc-vault')throw new Error('An existing doc-vault/ needs explicit migration to edw-doc/. Use the CLI migrate command, or DOC_VAULT_NAME=doc-vault to keep that vault.');
+        if(ownsVault(marker))throw new Error('An existing legacy doc-vault/ needs explicit migration to edw-doc/. Use the CLI migrate command, or EDW_DOC_NAME=doc-vault to keep that vault.');
       }
     }
     assertVaultOwnership();
@@ -74,7 +75,7 @@ export async function createEngine(target,{vaultName='edw-doc'}={}) {
     ensureIgnore(root,vaultName);
     makeDirectory(root,vaultName);
     makeDirectory(vault(),'.system');
-    if(!fs.existsSync(vaultFile('.system/owner.json',true))) writeAtomic(vault(),'.system/owner.json',JSON.stringify({product:'doc-vault',schema_version:SCHEMA_VERSION})+'\n');
+    if(!fs.existsSync(vaultFile('.system/owner.json',true))) writeAtomic(vault(),'.system/owner.json',JSON.stringify({product:PRODUCT,schema_version:SCHEMA_VERSION})+'\n');
   }
   async function locked(action,{init=false}={}) {
     if(init) initialize(); else {assertVaultOwnership();requireState();}

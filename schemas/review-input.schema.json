@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "review-input.schema.json",
-  "title": "Doc Vault evidence review",
+  "title": "EDW Doc evidence review",
   "description": "An agent review tied to a specific note revision and current source evidence. Supported never means human approval.",
   "type": "object",
   "properties": {

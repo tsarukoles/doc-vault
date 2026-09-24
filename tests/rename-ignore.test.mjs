@@ -115,7 +115,7 @@ for(const condition of ['destination','unowned','lock','journal']) {
 
 test('migration rejects traversal and a destination symlink or junction',async t=>{
   const {root}=await oldVault(t);
-  const outside=await temporaryDirectory(t,'doc-vault-migration-outside-');
+  const outside=await temporaryDirectory(t,'edw-doc-migration-outside-');
   fs.writeFileSync(path.join(outside,'untouched.txt'),'Keep');
   assert.equal(migrate(root,'doc-vault','../outside').status,1);
   try {fs.symlinkSync(outside,path.join(root,'edw-doc'),process.platform==='win32'?'junction':'dir');}
@@ -130,7 +130,7 @@ test('migration rejects traversal and a destination symlink or junction',async t
 
 test('migration rejects hard-linked content and preserves the external file',async t=>{
   const {root}=await oldVault(t);
-  const outside=await temporaryDirectory(t,'doc-vault-migration-hardlink-');
+  const outside=await temporaryDirectory(t,'edw-doc-migration-hardlink-');
   const external=path.join(outside,'note.md');
   fs.writeFileSync(external,'Keep externally linked file');
   fs.mkdirSync(path.join(root,'doc-vault','annotations'),{recursive:true});

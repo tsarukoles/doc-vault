@@ -61,7 +61,7 @@
     ],
     "SubagentStop": [
       {
-        "matcher": "^doc-vault:(curator|standards|reviewer)$",
+        "matcher": "^edw-doc:(curator|standards|reviewer)$",
         "hooks": [
           {
             "type": "command",

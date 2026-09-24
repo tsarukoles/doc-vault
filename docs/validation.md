@@ -1,8 +1,10 @@
 # Validation record
 
-This record describes development verification through version 0.1.3. It is not a production certification.
+This record describes development verification through version 0.2.0. It is not a production certification.
 
 ## Local verification
+
+The 0.2.0 full-suite run passed **131 tests, no failures or skips**, and the package check passed for 59 documents, 11 JSON files, four agents, and eight skills. Added rename coverage verifies new product identity, legacy ownership and environment aliases, fixed repository binding, lifecycle revocation, replacement of old standards markers, source and annotation preservation, archived analysis after version upgrades, and safe updates/removal of legacy local integration. Existing custom vault names, edited instructions, tracked files, and duplicate integration detection are covered. The renamed plugin still needs a real Claude Code installation and approval-flow smoke test; these local checks do not validate host UI behavior.
 
 The 0.1.3 full-suite run passed **118 tests, no failures or skips**, and the package check passed. It adds protocol and runtime checks for command-scoped approval, repeated batches, source preservation, revoked and expired grants, host-version compatibility, cancellation, compaction, and command-agent versus helper completion. The package check verifies exact skill grants and lifecycle hooks. Tests dispatch the approval tool directly; they do not verify a native permission dialog. The generic Codex skill validator could not run because PyYAML was unavailable; the repository's Claude-specific package checker validates all eight skills.
 

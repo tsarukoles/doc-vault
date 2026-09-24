@@ -10,7 +10,7 @@ const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
 const ASSET_ROOTS = ['agents', 'skills', 'policies', 'workflows', 'packs', 'templates', 'schemas', 'docs'];
 const CONTEXT_ROOTS = new Set(['policies', 'workflows', 'packs', 'templates', 'schemas', 'docs']);
 const SKILLS = ['build', 'sync', 'audit', 'onboard', 'ask', 'status', 'review', 'standards'];
-const PREFIX = 'mcp__plugin_doc-vault_vault__';
+const PREFIX = 'mcp__plugin_edw-doc_vault__';
 const READ_TOOLS = ['vault_status', 'vault_list', 'vault_read', 'vault_search', 'vault_context', 'vault_packet', 'vault_note', 'vault_standards'];
 const AGENT_TOOLS = {
   curator: [...READ_TOOLS, 'vault_scan', 'vault_publish', 'vault_lint', 'vault_refresh', 'vault_begin', 'vault_end'],
@@ -20,9 +20,9 @@ const AGENT_TOOLS = {
 };
 const REQUIRED = [
   'package.json', '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', '.mcp.json',
-  'hooks/hooks.json', 'README.md', 'scripts/cli.mjs', 'scripts/mcp.mjs', 'scripts/session-start.mjs',
+  'hooks/hooks.json', 'README.md', 'GET-STARTED.md', 'scripts/cli.mjs', 'scripts/mcp.mjs', 'scripts/session-start.mjs',
   'scripts/maintenance-hook.mjs', 'src/integration.mjs', 'src/maintenance.mjs', 'policies/documentation-style.md', 'docs/business-overview.md',
-  'scripts/run-lifecycle.mjs', 'src/run-authorization.mjs', 'docs/run-approval.md',
+  'scripts/run-lifecycle.mjs', 'src/run-authorization.mjs', 'src/identity.mjs', 'docs/run-approval.md',
   'scripts/check-package.mjs', 'src/engine.mjs', 'src/security.mjs', 'src/inventory.mjs',
   'src/analyze.mjs', 'src/readers.mjs', 'src/render.mjs', 'policies/core.md',
   ...Object.keys(AGENT_TOOLS).map(name => `agents/${name}.md`),
@@ -66,7 +66,7 @@ function toolList(value, name, fail) {
   if (typeof value !== 'string' || !value.trim()) { fail(`${name}: missing explicit tool allowlist.`); return []; }
   const text = value.trim().replace(/^\[/, '').replace(/\]$/, '');
   const tools = text.split(',').map(unquote);
-  if (tools.some(tool => !tool || !/^mcp__plugin_doc-vault_vault__vault_[a-z]+$/.test(tool))) {
+  if (tools.some(tool => !tool || !/^mcp__plugin_edw-doc_vault__vault_[a-z]+$/.test(tool))) {
     fail(`${name}: tools must be exact broker names; native tools and wildcards are forbidden.`);
   }
   if (new Set(tools).size !== tools.length) fail(`${name}: duplicate tool in allowlist.`);
@@ -136,6 +136,7 @@ export function checkPackage(root = PACKAGE_ROOT) {
   }
   for (const folder of ASSET_ROOTS) walk(folder);
   files.add('README.md');
+  files.add('GET-STARTED.md');
 
   const pkg = readJson('package.json');
   const plugin = readJson('.claude-plugin/plugin.json');
@@ -147,19 +148,19 @@ export function checkPackage(root = PACKAGE_ROOT) {
     if (pkg.type !== 'module') fail('package.json: runtime requires type "module".');
     if (pkg.engines?.node !== '>=20') fail('package.json: expected Node engine >=20.');
     if (pkg.scripts?.check !== 'node scripts/check-package.mjs') fail('package.json: check must invoke this script.');
-    if (pkg.bin?.['doc-vault'] !== 'scripts/cli.mjs') fail('package.json: doc-vault binary must point to the bundled CLI.');
+    if (pkg.bin?.['edw-doc'] !== 'scripts/cli.mjs') fail('package.json: edw-doc binary must point to the bundled CLI.');
     for (const key of ['dependencies', 'optionalDependencies', 'peerDependencies']) {
       if (pkg[key] && Object.keys(pkg[key]).length) fail(`package.json: ${key} violates the dependency-free runtime contract.`);
     }
   }
   if (plugin) {
-    if (plugin.name !== 'doc-vault') fail('Plugin name must remain doc-vault to match namespaced agents and tools.');
+    if (plugin.name !== 'edw-doc') fail('Plugin name must remain edw-doc to match namespaced agents and tools.');
     if (!VERSION.test(plugin.version || '')) fail('Plugin version must be a semantic version.');
     if (pkg && plugin.version !== pkg.version) fail('Plugin and package versions must match.');
     if (typeof plugin.description !== 'string' || !plugin.description.trim()) fail('Plugin description is required.');
   }
   if (marketplace) {
-    if (marketplace.name !== 'doc-vault-tools') fail('Marketplace name must match the documented doc-vault-tools name.');
+    if (marketplace.name !== 'edw-doc-tools') fail('Marketplace name must match the documented edw-doc-tools name.');
     if (!marketplace.owner?.name) fail('Marketplace owner name is required.');
     if (!Array.isArray(marketplace.plugins) || marketplace.plugins.length !== 1) fail('This distribution must have exactly one marketplace plugin.');
     else {
@@ -178,8 +179,8 @@ export function checkPackage(root = PACKAGE_ROOT) {
       if (servers.vault.command !== 'node' || JSON.stringify(servers.vault.args) !== JSON.stringify(['${CLAUDE_PLUGIN_ROOT}/scripts/mcp.mjs'])) {
         fail('MCP registration must invoke the bundled Node broker directly.');
       }
-      if (servers.vault.env !== undefined && (!servers.vault.env || typeof servers.vault.env !== 'object' || Array.isArray(servers.vault.env) || Object.entries(servers.vault.env).some(([key, value]) => key !== 'DOC_VAULT_ROOT' || typeof value !== 'string'))) {
-        fail('MCP environment overrides are limited to an explicit DOC_VAULT_ROOT string.');
+      if (servers.vault.env !== undefined && (!servers.vault.env || typeof servers.vault.env !== 'object' || Array.isArray(servers.vault.env) || Object.entries(servers.vault.env).some(([key, value]) => !['EDW_DOC_ROOT', 'DOC_VAULT_ROOT'].includes(key) || typeof value !== 'string'))) {
+        fail('MCP environment overrides are limited to an explicit EDW_DOC_ROOT string (or the legacy DOC_VAULT_ROOT alias).');
       }
     }
   }
@@ -197,7 +198,7 @@ export function checkPackage(root = PACKAGE_ROOT) {
           if (hook?.async || hook?.asyncRewake) fail(`${event} must use the reviewed synchronous checkpoint configuration.`);
           if (!Number.isFinite(hook?.timeout) || hook.timeout <= 0 || hook.timeout > (script==='run-lifecycle'?5:30)) fail(`${event} requires a bounded timeout.`);
         }
-        const matcher=event==='SubagentStop'?'^doc-vault:(curator|standards|reviewer)$':undefined;
+        const matcher=event==='SubagentStop'?'^edw-doc:(curator|standards|reviewer)$':undefined;
         if (groups[0].matcher!==matcher) fail(`${event} has an unexpected matcher.`);
       }
     }
@@ -235,7 +236,7 @@ export function checkPackage(root = PACKAGE_ROOT) {
     if (!metadata.description?.trim()) fail(`${file}: description is required.`);
     if (metadata.context !== 'fork') fail(`${file}: context must be fork.`);
     if (metadata.background !== 'false') fail(`${file}: background must be false.`);
-    const agent = /^doc-vault:([a-z0-9-]+)$/.exec(metadata.agent || '')?.[1];
+    const agent = /^edw-doc:([a-z0-9-]+)$/.exec(metadata.agent || '')?.[1];
     if (!agent || !agents.has(agent)) fail(`${file}: agent must reference a bundled namespaced agent.`);
     const expectedAgent = name === 'review' ? 'reviewer' : name === 'standards' ? 'standards' : 'curator';
     if (SKILLS.includes(name) && agent !== expectedAgent) fail(`${file}: expected ${expectedAgent} agent.`);

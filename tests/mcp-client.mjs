@@ -2,8 +2,11 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 export async function mcpClient(t, root, { cwd = fileURLToPath(new URL('../', import.meta.url)), vaultName = 'edw-doc', clientInfo = { name: 'claude-code', version: '2.1.199' } } = {}) {
+  const env = { ...process.env, EDW_DOC_ROOT: root, EDW_DOC_NAME: vaultName };
+  delete env.DOC_VAULT_ROOT;
+  delete env.DOC_VAULT_NAME;
   const child = spawn(process.execPath, [fileURLToPath(new URL('../scripts/mcp.mjs', import.meta.url))], {
-    cwd, env: { ...process.env, DOC_VAULT_ROOT: root, DOC_VAULT_NAME: vaultName }, windowsHide: true,
+    cwd, env, windowsHide: true,
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   let sequence = 0, buffer = '', stderr = '';

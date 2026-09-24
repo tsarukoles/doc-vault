@@ -14,7 +14,7 @@ export const COMMAND_TOOLS = Object.freeze(Object.fromEntries(Object.entries({
 
 // Ephemeral host lifecycle markers contain no repository content or approval
 // tokens. They allow hook processes to revoke grants in the long-lived broker.
-const DIRECTORY = `doc-vault-run-lifecycle-v1-${sha256(os.homedir()).slice(0,16)}`;
+const DIRECTORY = `edw-doc-run-lifecycle-v1-${sha256(os.homedir()).slice(0,16)}`;
 const ID = /^[A-Za-z0-9_-]{1,128}$/;
 const MAX_IDLE_MS = 4 * 60 * 60 * 1000;
 const invalidatingEvents = new Set(['SessionStart', 'UserPromptSubmit', 'Stop', 'SessionEnd', 'SubagentStop']);
@@ -27,7 +27,7 @@ function location(root, sessionId) {
 export function invalidateRuns(root, event) {
   if (!invalidatingEvents.has(event.hook_event_name) || !event.session_id) return;
   if (event.hook_event_name === 'SessionStart' && event.source === 'compact') return;
-  if (event.hook_event_name === 'SubagentStop' && !/^doc-vault:(curator|standards|reviewer)$/.test(event.agent_type || '')) return;
+  if (event.hook_event_name === 'SubagentStop' && !/^edw-doc:(curator|standards|reviewer)$/.test(event.agent_type || '')) return;
   const { parent, relative } = location(root, event.session_id);
   makeDirectory(parent, DIRECTORY);
   writeAtomic(parent, relative, JSON.stringify({ generation: crypto.randomBytes(24).toString('hex'), event: event.hook_event_name }) + '\n');
@@ -36,11 +36,11 @@ export function invalidateRuns(root, event) {
 function generation(root, sessionId) {
   const { parent, relative } = location(root, sessionId);
   if (!fs.existsSync(checkedPath(parent, relative, { allowMissing: true }))) {
-    throw new Error('Doc Vault lifecycle hooks are not active for this session. Reload the plugin and invoke the command again; no run was authorized.');
+    throw new Error('EDW Doc lifecycle hooks are not active for this session. Reload the plugin and invoke the command again; no run was authorized.');
   }
   const record = JSON.parse(readBytes(parent, relative, 2048));
-  if (!/^[a-f0-9]{48}$/.test(record.generation) || !invalidatingEvents.has(record.event)) throw new Error('Invalid Doc Vault lifecycle marker.');
-  if (['Stop', 'SubagentStop', 'SessionEnd'].includes(record.event)) throw new Error('The previous invocation has ended. Invoke the Doc Vault command again.');
+  if (!/^[a-f0-9]{48}$/.test(record.generation) || !invalidatingEvents.has(record.event)) throw new Error('Invalid EDW Doc lifecycle marker.');
+  if (['Stop', 'SubagentStop', 'SessionEnd'].includes(record.event)) throw new Error('The previous invocation has ended. Invoke the EDW Doc command again.');
   return record.generation;
 }
 
@@ -56,7 +56,7 @@ export function createRunAuthorization(root, { now = Date.now } = {}) {
   const grants = new Map();
   function current(runId) {
     const grant = grants.get(runId);
-    if (!grant) throw new Error('No active approval for this run. Invoke the Doc Vault command and approve vault_begin first.');
+    if (!grant) throw new Error('No active approval for this run. Invoke the EDW Doc command and approve vault_begin first.');
     try {
       if (now() - grant.lastUsed >= MAX_IDLE_MS || generation(root, grant.sessionId) !== grant.generation) throw new Error('Run approval expired or the invocation ended.');
     } catch (error) { grants.delete(runId); throw error; }
@@ -67,10 +67,10 @@ export function createRunAuthorization(root, { now = Date.now } = {}) {
       // The host enforces requiresUserInteraction before dispatching this call.
       // Unknown/older clients must not silently ignore that metadata.
       if (!supportsRunApproval(client)) throw new Error('Single-run approval requires Claude Code CLI 2.1.199 or later with explicit-approval support.');
-      if (!Object.hasOwn(COMMAND_TOOLS, command)) throw new Error('Unknown Doc Vault command.');
+      if (!Object.hasOwn(COMMAND_TOOLS, command)) throw new Error('Unknown EDW Doc command.');
       const epoch = generation(root, sessionId);
       for (const [id, grant] of grants) if (grant.sessionId === sessionId || now() - grant.lastUsed >= MAX_IDLE_MS) grants.delete(id);
-      if (grants.size >= 32) throw new Error('Too many active Doc Vault sessions. End unused runs first.');
+      if (grants.size >= 32) throw new Error('Too many active EDW Doc sessions. End unused runs first.');
       const runId = crypto.randomBytes(32).toString('hex');
       grants.set(runId, { command, sessionId, generation: epoch, lastUsed: now() });
       return { run_id: runId, command, repository: root, tools: COMMAND_TOOLS[command], authorization: 'Use this run_id for all batches in this invocation. Call vault_end before returning.' };

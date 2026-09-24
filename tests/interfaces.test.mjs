@@ -14,8 +14,10 @@ const cli = fileURLToPath(new URL('../scripts/cli.mjs', import.meta.url));
 const sessionStart = fileURLToPath(new URL('../scripts/session-start.mjs', import.meta.url));
 
 function run(script, args, { cwd, input, env = {} }) {
+  const inherited = { ...process.env };
+  for (const key of ['EDW_DOC_ROOT', 'EDW_DOC_NAME', 'DOC_VAULT_ROOT', 'DOC_VAULT_NAME']) delete inherited[key];
   const result = spawnSync(process.execPath, [script, ...args], {
-    cwd, input, env: { ...process.env, ...env },
+    cwd, input, env: { ...inherited, ...env },
     encoding: 'utf8', timeout: 15000, maxBuffer: 2 * 1024 * 1024, windowsHide: true,
   });
   if (result.error) throw result.error;
@@ -24,7 +26,7 @@ function run(script, args, { cwd, input, env = {} }) {
 
 test('CLI scan/read/status operate on the explicit repository and emit machine-readable results', async (t) => {
   const root = await fixture(t, 'security');
-  const unrelated = await temporaryDirectory(t, 'doc-vault-cli-cwd-');
+  const unrelated = await temporaryDirectory(t, 'edw-doc-cli-cwd-');
   const before = await hashes(root);
   const initial = run(cli, ['status', '--root', root], { cwd: unrelated });
   assert.equal(initial.status, 0, initial.stderr);
@@ -57,7 +59,7 @@ test('CLI rejects unknown options without initializing the target', async (t) =>
 
 test('MCP stdio negotiates, exposes bounded tools, and keeps its repository binding fixed', async (t) => {
   const root = await fixture(t, 'security');
-  const unrelated = await temporaryDirectory(t, 'doc-vault-mcp-cwd-');
+  const unrelated = await temporaryDirectory(t, 'edw-doc-mcp-cwd-');
   const before = await hashes(root), session_id = crypto.randomUUID();
   invalidateRuns(root, { hook_event_name: 'UserPromptSubmit', session_id });
   const client = await mcpClient(t, root, { cwd: path.dirname(unrelated) });
@@ -86,7 +88,7 @@ test('MCP stdio negotiates, exposes bounded tools, and keeps its repository bind
 
 test('SessionStart is quiet without a vault and checks existing freshness without writes', async (t) => {
   const root = await fixture(t, 'security');
-  const options = { cwd: root, input: JSON.stringify({ cwd: root }), env: { DOC_VAULT_ROOT: root, DOC_VAULT_NAME: 'edw-doc' } };
+  const options = { cwd: root, input: JSON.stringify({ cwd: root }), env: { EDW_DOC_ROOT: root, EDW_DOC_NAME: 'edw-doc' } };
   const original = await hashes(root);
   const absent = run(sessionStart, [], options);
   assert.equal(absent.status, 0, absent.stderr);

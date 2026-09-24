@@ -1,5 +1,7 @@
 # Doc Vault 0.1.2
 
+> Historical record: names and examples below describe earlier Doc Vault releases. Since 0.2.0, use EDW Doc and the current [team guide](../GET-STARTED.md).
+
 This release adds optional local instruction integration, maintenance at Claude Code checkpoints, and clearer documentation guidance. The default vault remains `edw-doc/`; the plugin and `/doc-vault:*` command names are unchanged.
 
 ## Changes

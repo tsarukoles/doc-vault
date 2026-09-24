@@ -5,6 +5,7 @@ import { createEngine } from './engine.mjs';
 import { integrationStatus } from './integration.mjs';
 import { assertUntrackedVault } from './inventory.mjs';
 import { notePath } from './render.mjs';
+import { PRODUCT, ownsVault, ownsMaintenance } from './identity.mjs';
 import { checkedPath, readBytes, rootDirectory, writeAtomic, removeOwnedFile } from './security.mjs';
 
 const RECEIPT = '.system/maintenance.json';
@@ -14,7 +15,7 @@ const EVENTS = new Set(['SessionStart', 'UserPromptSubmit', 'PostToolUse', 'Stop
 function receipt(vault) {
   if (!fs.existsSync(checkedPath(vault, RECEIPT, { allowMissing: true, write: true }))) return {};
   const value = JSON.parse(readBytes(vault, RECEIPT, 16384).toString('utf8'));
-  if (value.product !== 'doc-vault-maintenance' || value.version !== 1) throw new Error('Unrecognized maintenance state; preserved for inspection.');
+  if (!ownsMaintenance(value) || value.version !== 1) throw new Error('Unrecognized maintenance state; preserved for inspection.');
   for (const key of ['snapshot', 'notified_snapshot']) {
     if (value[key] !== null && value[key] !== undefined && !/^s_[a-f0-9]{20}$/.test(value[key])) throw new Error('Invalid maintenance snapshot.');
   }
@@ -26,7 +27,7 @@ function receipt(vault) {
 export async function maintain(rootInput, event = {}, { vaultName } = {}) {
   const name = event.hook_event_name;
   if (!EVENTS.has(name) || event.permission_mode === 'plan' || event.agent_id) return { skipped: true };
-  if (name === 'PostToolUse' && /^mcp__plugin_doc-vault_vault__/.test(event.tool_name || '')) return { skipped: true };
+  if (name === 'PostToolUse' && /^mcp__plugin_edw-doc_vault__/.test(event.tool_name || '')) return { skipped: true };
   const root = rootDirectory(rootInput);
   const setup = integrationStatus(root);
   if (!setup.installed || !setup.maintenanceEnabled) return { skipped: true };
@@ -35,18 +36,18 @@ export async function maintain(rootInput, event = {}, { vaultName } = {}) {
   const vault = checkedPath(root, vaultName, { allowMissing: true, write: true });
   if (!fs.existsSync(vault)) return { skipped: true, reason: 'Build the vault first.' };
   const owner = JSON.parse(readBytes(vault, '.system/owner.json', 8192).toString('utf8'));
-  if (owner.product !== 'doc-vault') throw new Error('Maintenance requires an owned vault.');
+  if (!ownsVault(owner)) throw new Error('Maintenance requires an owned vault.');
   assertUntrackedVault(root, vaultName);
   const lock = checkedPath(vault, LOCK, { allowMissing: true, write: true });
   if (fs.existsSync(lock)) {
     const held = JSON.parse(readBytes(vault, LOCK, 8192).toString('utf8'));
-    if (held.product !== 'doc-vault-maintenance' || held.host !== os.hostname() || !Number.isInteger(held.pid) || held.pid <= 0) return { skipped: true, busy: true };
+    if (!ownsMaintenance(held) || held.host !== os.hostname() || !Number.isInteger(held.pid) || held.pid <= 0) return { skipped: true, busy: true };
     try { process.kill(held.pid, 0); return { skipped: true, busy: true }; }
     catch (error) { if (error.code !== 'ESRCH') return { skipped: true, busy: true }; }
     removeOwnedFile(vault, LOCK);
   }
   const token = crypto.randomBytes(16).toString('hex');
-  try { fs.writeFileSync(lock, JSON.stringify({ product: 'doc-vault-maintenance', host: os.hostname(), pid: process.pid, token }), { flag: 'wx', mode: 0o600 }); }
+  try { fs.writeFileSync(lock, JSON.stringify({ product: `${PRODUCT}-maintenance`, host: os.hostname(), pid: process.pid, token }), { flag: 'wx', mode: 0o600 }); }
   catch (error) { if (error.code === 'EEXIST') return { skipped: true, busy: true }; throw error; }
   try {
     const previous = receipt(vault);
@@ -64,7 +65,7 @@ export async function maintain(rootInput, event = {}, { vaultName } = {}) {
     const inventory = JSON.parse(readBytes(vault, '.system/state.json', 64 * 1024 * 1024).toString('utf8'));
     const pendingFiles = inventory.records.filter(record => record.status === 'included' && !inventory.enrichments[notePath(record.path)]).length;
     const pending = invalidated > 0 || pendingFiles > 0;
-    const state = { product: 'doc-vault-maintenance', version: 1, snapshot, pending,
+    const state = { product: `${PRODUCT}-maintenance`, version: 1, snapshot, pending,
       notified_snapshot: previous.notified_snapshot || null, checked_at_ms: Date.now() };
     let notifySync = false;
     if (name === 'Stop' && !event.stop_hook_active && pending && state.notified_snapshot !== snapshot) {
@@ -77,8 +78,8 @@ export async function maintain(rootInput, event = {}, { vaultName } = {}) {
     writeAtomic(vault, RECEIPT, JSON.stringify(state, null, 2) + '\n');
     return { refreshed: changed, pending, pendingFiles, invalidated, snapshot, notifySync, vaultName,
       message: pending
-        ? 'Doc Vault has pending documentation work. When convenient, run /doc-vault:sync in Claude Code. Do not interrupt ordinary coding or start a sweep automatically.'
-        : 'Doc Vault source inventory is current. Static freshness does not establish completed AI analysis or independent review.' };
+        ? 'EDW Doc has pending documentation work. When convenient, run /edw-doc:sync in Claude Code. Do not interrupt ordinary coding or start a sweep automatically.'
+        : 'EDW Doc source inventory is current. Static freshness does not establish completed AI analysis or independent review.' };
 
   } finally {
     if (fs.existsSync(checkedPath(vault, LOCK, { allowMissing: true, write: true }))) {

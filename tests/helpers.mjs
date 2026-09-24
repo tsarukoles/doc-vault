@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const fixtureDirectory = fileURLToPath(new URL('../fixtures/', import.meta.url));
 
-export async function temporaryDirectory(t, prefix = 'doc-vault-test-') {
+export async function temporaryDirectory(t, prefix = 'edw-doc-test-') {
   const parent = await realpath(tmpdir());
   const directory = await mkdtemp(path.join(parent, prefix));
   t.after(async () => {

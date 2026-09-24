@@ -11,7 +11,7 @@ async function sourceEvidence(engine, sourcePath, endLine) {
 }
 
 async function assessedFixture(t) {
-  const root=await temporaryDirectory(t,'doc-vault-standards-regression-');
+  const root=await temporaryDirectory(t,'edw-doc-standards-regression-');
   await mkdir(path.join(root,'src'));
   await writeFile(path.join(root,'POLICY.md'),'# Acceptance contract\nAccept values of at least three.\n');
   await writeFile(path.join(root,'src','checks.py'),'def valid(value):\n    return value >= 3\n');

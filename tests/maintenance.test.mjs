@@ -24,7 +24,9 @@ async function configured(t, vaultName = 'edw-doc') {
   return { root, engine, vault: path.join(root, vaultName) };
 }
 function run(script, root, args = [], event = {}) {
-  const env = { ...process.env, DOC_VAULT_ROOT: root };
+  const env = { ...process.env, EDW_DOC_ROOT: root };
+  delete env.EDW_DOC_NAME;
+  delete env.DOC_VAULT_ROOT;
   delete env.DOC_VAULT_NAME;
   const result = spawnSync(process.execPath, [script, ...args], { cwd: root, env, input: JSON.stringify(event), encoding: 'utf8', timeout: 15000, windowsHide: true });
   assert.ifError(result.error);
@@ -117,11 +119,11 @@ test('plan mode, plugin subagents, broker tools, and disabled maintenance never 
   for (const event of [
     { hook_event_name: 'Stop', permission_mode: 'plan' },
     { hook_event_name: 'PostToolUse', agent_id: 'worker', tool_name: 'Read' },
-    { hook_event_name: 'PostToolUse', tool_name: 'mcp__plugin_doc-vault_vault__vault_publish' },
+    { hook_event_name: 'PostToolUse', tool_name: 'mcp__plugin_edw-doc_vault__vault_publish' },
     { hook_event_name: 'SubagentStop' },
   ]) assert.equal((await maintain(root, event)).skipped, true);
   assert.deepEqual(await hashes(root), before);
-  const configPath = path.join(root, '.claude/doc-vault/config.json');
+  const configPath = path.join(root, '.claude/edw-doc/config.json');
   const config = JSON.parse(fs.readFileSync(configPath));
   config.maintenance.enabled = false;
   fs.writeFileSync(configPath, JSON.stringify(config));
@@ -187,7 +189,7 @@ test('MCP follows setup vault selection without exposing integration write opera
 
 test('uninstall preserves edited config but disables maintenance', async t => {
   const { root } = await configured(t);
-  fs.appendFileSync(path.join(root, '.claude/doc-vault/config.json'), '\n');
+  fs.appendFileSync(path.join(root, '.claude/edw-doc/config.json'), '\n');
   removeIntegration(root);
   const before = await hashes(root);
   assert.equal((await maintain(root, { hook_event_name: 'Stop' })).skipped, true);

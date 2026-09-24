@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "rule-input.schema.json",
-  "title": "Doc Vault repository standard registration",
+  "title": "EDW Doc repository standard registration",
   "description": "A source-backed declared requirement or observed convention. Bundled advisory rules are managed by the distribution. The broker additionally validates identifiers, scope, authority, current evidence, and publication ownership.",
   "type": "object",
   "properties": {

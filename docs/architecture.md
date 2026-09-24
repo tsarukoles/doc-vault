@@ -1,6 +1,6 @@
 # Architecture
 
-Doc Vault separates local source mechanics from model reasoning. The runtime builds a bounded, inspectable baseline; the host agent explains supported behavior; a separate reviewer can examine those explanations.
+EDW Doc separates local source mechanics from model reasoning. The runtime builds a bounded, inspectable baseline; the host agent explains supported behavior; a separate reviewer can examine those explanations.
 
 ```mermaid
 flowchart TD
@@ -66,7 +66,7 @@ Standards records are a separate data layer. Rules carry authority, scope, prove
 
 The optional local watcher performs static maintenance while its process runs. It does not contact a model. Without installed local setup, the plugin `SessionStart` hook supplies only a read-only freshness notice.
 
-With setup-enabled maintenance, `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `Stop` can reconcile an existing owned vault. Plan-mode and subagent events are skipped. `PostToolUse` skips Doc Vault broker calls and applies a two-second throttle; prompt and stop checkpoints reconcile without that throttle. A maintenance lock prevents concurrent controllers, while the engine retains its own writer checks. A receipt inside the vault records the inspected snapshot and whether its reminder has been shown.
+With setup-enabled maintenance, `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `Stop` can reconcile an existing owned vault. Plan-mode and subagent events are skipped. `PostToolUse` skips EDW Doc broker calls and applies a two-second throttle; prompt and stop checkpoints reconcile without that throttle. A maintenance lock prevents concurrent controllers, while the engine retains its own writer checks. A receipt inside the vault records the inspected snapshot and whether its reminder has been shown.
 
 Pending work includes invalidated explanations and included files without model enrichment. `Stop` records and emits one nonblocking reminder per pending snapshot. It never forces a continuation or launches a sweep. Later events inspect actual coverage; failures or incomplete work remain visible for manual action. Standards assessment and independent review remain separate workflows.
 

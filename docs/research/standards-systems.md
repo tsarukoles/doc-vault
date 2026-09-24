@@ -1,5 +1,7 @@
 # Research: standards, review systems, and semantic evaluations
 
+> Historical record: names and examples below describe earlier Doc Vault releases. Since 0.2.0, use EDW Doc and the current [team guide](../../GET-STARTED.md).
+
 Research date: **2026-09-23**. These are original design recommendations based on primary documentation and public project material. No external implementation or rule collection was copied. Product capabilities and licenses can change; the references record what was inspected on this date. These systems were researched, not installed or benchmarked.
 
 ## What is useful for Doc Vault

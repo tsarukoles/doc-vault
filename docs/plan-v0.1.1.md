@@ -1,5 +1,7 @@
 # Version 0.1.1 implementation plan
 
+> Historical record: names and examples below describe earlier Doc Vault releases. Since 0.2.0, use EDW Doc and the current [team guide](../GET-STARTED.md).
+
 The release improves explanations and makes standards review inspectable without granting the model source-editing or execution privileges.
 
 1. Research comparable documentation and review systems from primary sources. Adopt bounded evidence packets, relationship-aware refresh, explicit coverage, versioned rules, and positive/negative evaluation cases. Keep references and tradeoffs in `docs/research/`.

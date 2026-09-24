@@ -8,6 +8,7 @@ import crypto from 'node:crypto';
 import { assertUntrackedVault, ignoreDiagnostics } from '../src/inventory.mjs';
 import { checkedPath, ensureIgnore, readBytes, rootDirectory, validateVaultName } from '../src/security.mjs';
 import { installIntegration, removeIntegration, integrationStatus } from '../src/integration.mjs';
+import { ownsVault } from '../src/identity.mjs';
 
 function migrateOwnedVault(rootInput, from, to) {
   const root=rootDirectory(rootInput);
@@ -18,7 +19,7 @@ function migrateOwnedVault(rootInput, from, to) {
   if(fs.existsSync(destination))throw new Error('Migration destination already exists. Nothing was overwritten.');
   if(!fs.lstatSync(source).isDirectory())throw new Error('Migration source must be an owned vault directory.');
   const marker=JSON.parse(readBytes(source,'.system/owner.json',8192).toString('utf8'));
-  if(marker.product!=='doc-vault'||!Number.isInteger(marker.schema_version))throw new Error('Migration source has no recognized Doc Vault ownership marker.');
+  if(!ownsVault(marker)||!Number.isInteger(marker.schema_version))throw new Error('Migration source has no recognized EDW Doc ownership marker.');
   for(const reserved of ['.system/write-lock.json','.system/pending.json']) {
     if(fs.existsSync(checkedPath(source,reserved,{allowMissing:true,write:true})))throw new Error('Migration refuses a vault with a writer lock or pending publication. Complete/recover it first.');
   }
@@ -58,7 +59,7 @@ function migrateOwnedVault(rootInput, from, to) {
     if(current.token===token)fs.unlinkSync(checkedPath(lockRoot,lockRelative,{write:true}));
   }
   return {migrated:true,root,from,to,preserved:'Vault files, annotations, source references, and wiki links are unchanged. Both folders have the same repository-root depth.',
-    next_step:'Run /doc-vault:sync to refresh the version, source inventory, and assessments.',ignore:ignoreDiagnostics(root,to)};
+    next_step:'Run /edw-doc:sync to refresh the version, source inventory, and assessments.',ignore:ignoreDiagnostics(root,to)};
 }
 
 const args=process.argv.slice(2);
@@ -71,12 +72,12 @@ try {
     options[key.slice(2)]=args.shift();
   }
   if(command==='help'||command==='--help'||command==='-h') {
-    process.stdout.write(`Doc Vault ${VERSION}\n\nUsage: node scripts/cli.mjs <command> --root <repository>\n\nCommands:\n  setup       Install local instruction integration (--root required)\n  setup-status Inspect local integration without writing (--root required)\n  uninstall   Remove unchanged integration additions (--root required)\n  scan, sync  Create/refresh a source-grounded structural vault\n  status      Report freshness without writing\n  lint        Check managed notes, links, evidence and coverage\n  list        List sources (--kind category, --limit 1..500)\n  read        Inspect approved source (--path relative/source)\n  packet      Get one source analysis packet (--path relative/source)\n  context     Read bundled guidance (--topic index or asset path)\n  watch       Poll and refresh (--interval seconds, minimum 2)\n  migrate     Move an owned vault (--from doc-vault --to edw-doc)\n\nOptional: --vault-name edw-doc\nScan/sync/watch write only the vault and append its root ignore rule plus /.claude/.\nMigration additionally moves the explicitly named owned vault; it never overwrites a destination.\nThey never run project code or install Git hooks. AI enrichment runs through the Claude Code plugin.\nSetup additionally owns narrow local instruction references and .claude/doc-vault files.\nUninstall preserves user edits, the vault, ignore rules, and directories.\n`);
+    process.stdout.write(`EDW Doc ${VERSION}\n\nUsage: node scripts/cli.mjs <command> --root <repository>\n\nCommands:\n  setup       Install local instruction integration (--root required)\n  setup-status Inspect local integration without writing (--root required)\n  uninstall   Remove unchanged integration additions (--root required)\n  scan, sync  Create/refresh a source-grounded structural vault\n  status      Report freshness without writing\n  lint        Check managed notes, links, evidence and coverage\n  list        List sources (--kind category, --limit 1..500)\n  read        Inspect approved source (--path relative/source)\n  packet      Get one source analysis packet (--path relative/source)\n  context     Read bundled guidance (--topic index or asset path)\n  watch       Poll and refresh (--interval seconds, minimum 2)\n  migrate     Move an owned vault (--from doc-vault --to edw-doc)\n\nOptional: --vault-name edw-doc\nScan/sync/watch write only the vault and append its root ignore rule plus /.claude/.\nMigration additionally moves the explicitly named owned vault; it never overwrites a destination.\nThey never run project code or install Git hooks. AI enrichment runs through the Claude Code plugin.\nSetup additionally owns narrow local instruction references and .claude/edw-doc files.\nUninstall preserves user edits, the vault, ignore rules, and directories.\n`);
   } else if(['setup','setup-status','uninstall'].includes(command)) {
     if(!options.root)throw new Error('Local integration commands require an explicit --root repository.');
     if(Object.keys(options).some(key=>!['root','vault-name'].includes(key)))throw new Error('Integration commands accept only --root and setup --vault-name.');
     if(command!=='setup'&&options['vault-name'])throw new Error('--vault-name is only accepted for setup.');
-    const result=command==='setup'?installIntegration(options.root,{vaultName:options['vault-name']||'edw-doc'}):command==='uninstall'?removeIntegration(options.root):integrationStatus(options.root);
+    const result=command==='setup'?installIntegration(options.root,{vaultName:options['vault-name']}):command==='uninstall'?removeIntegration(options.root):integrationStatus(options.root);
     process.stdout.write(JSON.stringify(result,null,2)+'\n');
   } else if(command==='migrate') {
     if(!options.root||!options.from||!options.to)throw new Error('Migration requires explicit --root, --from, and --to.');
@@ -111,4 +112,4 @@ try {
       if(command==='lint'&&!result.ok)process.exitCode=1;
     }
   }
-} catch(error) {process.stderr.write(`Doc Vault: ${error.message}\n`);process.exitCode=1;}
+} catch(error) {process.stderr.write(`EDW Doc: ${error.message}\n`);process.exitCode=1;}

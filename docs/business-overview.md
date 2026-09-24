@@ -1,6 +1,6 @@
-# Doc Vault: capabilities, scope, and preservation rules
+# EDW Doc: capabilities, scope, and preservation rules
 
-Doc Vault helps engineers understand an unfamiliar repository. It creates a local knowledge folder named `edw-doc/`, with maps, linked file explanations, process walkthroughs, standards references, and onboarding guides. The plugin and its commands retain the name `doc-vault`.
+EDW Doc helps engineers understand an unfamiliar repository. It creates a local knowledge folder named `edw-doc/`, with maps, linked file explanations, process walkthroughs, standards references, and onboarding guides. Since version 0.2.0, the plugin is named `edw-doc` and commands use `/edw-doc:*`; earlier releases used the name Doc Vault.
 
 The goal is to make it easier to find how something works, what checks it performs, and where to investigate a problem. Explanations include source references, analysis dates, and visible gaps so readers can judge how much to rely on them.
 
@@ -49,7 +49,7 @@ Ordinary wiki links connect related notes in Obsidian. Mermaid diagrams explain 
 
 ## Local integration and preservation rules
 
-The optional setup process adds owned instructions and configuration under `.claude/doc-vault/`. It reuses a single supported, locally ignored Claude instruction entry point by adding a small marked reference. Existing tracked, unignored, AGENTS-only, or ambiguous instruction setups are preserved; an ignored `.claude/rules/doc-vault.md` supplies the integration instead, unless an existing Claude import already supplies the reference. If no entry point is detected, setup can create a minimal ignored root `CLAUDE.md`. Setup reports instruction activation as unverified until checked in the actual host.
+The optional setup process adds owned instructions and configuration under `.claude/edw-doc/` for a fresh installation. Earlier owned `.claude/doc-vault/` installations are retained in place and can receive updated command instructions by repeating setup. It reuses a single supported, locally ignored Claude instruction entry point by adding a small marked reference. Existing tracked, unignored, AGENTS-only, or ambiguous instruction setups are preserved; an ignored rule adapter supplies the integration instead, unless an existing Claude import already supplies the reference. If no entry point is detected, setup can create a minimal ignored root `CLAUDE.md`. Setup reports instruction activation as unverified until checked in the actual host.
 
 `AGENTS.md` is the standard plural filename. A custom `AGENT.md` is preserved without assuming the host automatically loads it. Setup does not create `CLAUDE.local.md` or change global instructions. See [installation](installation.md) for supported entry points and host requirements.
 
@@ -68,7 +68,7 @@ The preservation rules are:
 
 For an existing vault with local maintenance enabled, plugin hooks reconcile static state at session start, when a new request arrives, after tool activity, and when the agent finishes. Plan-mode and subagent events skip writes; repeated tool events are throttled. This detects additions, modifications, deletions, and supported renames. It refreshes maps, marks affected explanations stale, and makes pending analysis visible to the active session.
 
-Changes made by an editor, a pull, or a branch switch are discovered at a later reconciliation event. Hook processing is bounded; it does not run a permanent background AI worker. The finish hook can display one nonblocking synchronization reminder for a changed snapshot. It never forces a documentation run. AI explanation updates still require the active host workflow, such as `/doc-vault:sync`; a hook event does not guarantee that analysis is complete. When Claude Code is closed, these session hooks do not run; the next session can catch up. An optional separate static watcher also does not invoke a model.
+Changes made by an editor, a pull, or a branch switch are discovered at a later reconciliation event. Hook processing is bounded; it does not run a permanent background AI worker. The finish hook can display one nonblocking synchronization reminder for a changed snapshot. It never forces a documentation run. AI explanation updates still require the active host workflow, such as `/edw-doc:sync`; a hook event does not guarantee that analysis is complete. When Claude Code is closed, these session hooks do not run; the next session can catch up. An optional separate static watcher also does not invoke a model.
 
 Each developer keeps a local vault. Pulling or pushing source does not upload, download, or merge generated documentation. A reference outside the selected repository remains an external boundary; the tool does not crawl it automatically.
 

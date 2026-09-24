@@ -1,5 +1,7 @@
 # Doc Vault 0.1.1
 
+> Historical record: names and examples below describe earlier Doc Vault releases. Since 0.2.0, use EDW Doc and the current [team guide](../GET-STARTED.md).
+
 This release deepens source explanations, adds a dedicated standards workflow, and changes the default output directory to **`edw-doc/`**. The plugin name and `/doc-vault:*` commands remain unchanged.
 
 ## Changes

@@ -3,8 +3,10 @@ import { notePath } from './render.mjs';
 
 export const CATEGORIES = ['general','languages/python','languages/javascript','languages/typescript','testing','cicd','databases','transformations'];
 export const RESULTS = ['complies','diverges','noncompliant','unknown','not-applicable'];
-export const START = '<!-- doc-vault:standards:start -->';
-export const END = '<!-- doc-vault:standards:end -->';
+export const START = '<!-- edw-doc:standards:start -->';
+export const END = '<!-- edw-doc:standards:end -->';
+const MARKER_PAIRS = [[START, END], ['<!-- doc-vault:standards:start -->', '<!-- doc-vault:standards:end -->']];
+export const MANAGED_MARKERS = Object.freeze(MARKER_PAIRS.flat());
 const plain = value => String(value ?? '').replace(/[\r\n]+/g,' ').replace(/[<>]/g,'').replace(/([\\`*_[\]#|])/g,'\\$1');
 const wiki = (target,label) => `[[${target.replace(/\.md$/,'')}|${String(label).replace(/[\[\]|\r\n]/g,' ')}]]`;
 const table = (rows,headers=['Standard','Basis','Result','Explanation']) => `${headers.join(' | ')}\n--- | --- | --- | ---\n${rows.map(row=>row.map(cell=>String(cell).replace(/(?<!\\)\|/g,'\\|')).join(' | ')).join('\n')}\n`;
@@ -100,10 +102,17 @@ function describeAssessment(a) {
 }
 
 export function withStandards(content,state,record) {
-  const start=content.indexOf(START),end=content.indexOf(END);
-  if(start!==-1) {
-    if(end<start)throw new Error('Malformed managed standards section.');
-    content=content.slice(0,start)+content.slice(end+END.length);
+  // Upgrade a previously generated block in place without duplicating it.
+  // Ownership/hash checks remain the engine's responsibility before writes.
+  for (const [opening, closing] of MARKER_PAIRS) {
+    let start=content.indexOf(opening);
+    while(start!==-1) {
+      const end=content.indexOf(closing),nested=content.indexOf(opening,start+opening.length);
+      if(end<start||(nested!==-1&&nested<end))throw new Error('Malformed managed standards section.');
+      content=content.slice(0,start)+content.slice(end+closing.length);
+      start=content.indexOf(opening);
+    }
+    if(content.includes(closing))throw new Error('Malformed managed standards section.');
   }
   const rows=fileStandards(state,record).map(({rule,assessment})=>[wiki(rule.note_path,rule.title),plain(rule.authority),plain(assessment.result),describeAssessment(assessment)]);
   return `${content.trimEnd()}\n\n${START}\n## Coding standards\n\n${table(rows)}\nThese results describe cited, bounded source inspection. They are not runtime validation or a certification of the whole file. A candidate rule may be marked not-applicable with evidence. [[standards/index|Rule catalog and interpretation]]\n${END}\n`;

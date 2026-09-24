@@ -1,9 +1,9 @@
 {
-  "name": "doc-vault-tools",
-  "owner": { "name": "Doc Vault maintainers" },
+  "name": "edw-doc-tools",
+  "owner": { "name": "EDW Doc maintainers" },
   "plugins": [
     {
-      "name": "doc-vault",
+      "name": "edw-doc",
       "source": "./",
       "description": "Local repository maps, evidence-backed wiki notes, and onboarding."
     }

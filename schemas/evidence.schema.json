@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "evidence.schema.json",
-  "title": "Doc Vault source evidence",
+  "title": "EDW Doc source evidence",
   "description": "A current broker-approved source snapshot and either a text range or an extracted workbook selector. The broker also validates paths, hashes, ranges and selectors against live source.",
   "type": "object",
   "properties": {

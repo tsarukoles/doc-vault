@@ -12,7 +12,7 @@ Path validation and controlled output construction prevent ordinary traversal an
 
 ## Separate setup allowance
 
-`setup`, `setup-status`, and `uninstall` are operator CLI commands, not MCP operations available to analysis agents. Setup requires an explicit Git repository root. Its write allowlist covers owned `.claude/doc-vault` instructions, configuration and ownership records, an owned `.claude/rules/doc-vault.md` adapter or minimal root `CLAUDE.md`, a marked import in a single supported locally ignored Claude instruction file, and the exact required `.gitignore` additions.
+`setup`, `setup-status`, and `uninstall` are operator CLI commands, not MCP operations available to analysis agents. Setup requires an explicit Git repository root. Its write allowlist covers owned `.claude/edw-doc` instructions, configuration and ownership records, an owned `.claude/rules/edw-doc.md` adapter or minimal root `CLAUDE.md`, a marked import in a single supported locally ignored Claude instruction file, and the exact required `.gitignore` additions. Existing owned `.claude/doc-vault` installations and their legacy rule adapters are supported in place under the same ownership and preservation checks.
 
 Existing tracked or unignored instruction files remain untouched. AGENTS-only or ambiguous setups use the rule adapter because host instruction loading cannot be established locally. Setup never creates `CLAUDE.local.md`, changes global instructions, edits Claude settings, installs Git hooks, or alters Git configuration. Host activation remains unverified until checked in the real host.
 
@@ -22,7 +22,7 @@ The installer records hashes for owned files and exact content for owned blocks.
 
 Packaged hooks can statically refresh an existing owned vault only after local setup enables maintenance. Without setup, session start retains a read-only status notice. Hooks never initialize a missing vault or run repository code. Their writes use the existing broker boundary plus maintenance bookkeeping inside the vault; they do not grant setup access to the analysis agents.
 
-Plan-mode and subagent events skip maintenance writes. `PostToolUse` skips Doc Vault broker calls and throttles repeated checks. A main-agent `Stop` event can show one nonblocking reminder per pending snapshot. It does not force a sync continuation. Failures leave work pending without indefinitely blocking normal work. Hook processes run under the host's permissions, so the checks do not replace host sandboxing. There is no permanent background AI worker, and instruction loading or a hook request does not prove completed AI analysis.
+Plan-mode and subagent events skip maintenance writes. `PostToolUse` skips EDW Doc broker calls and throttles repeated checks. A main-agent `Stop` event can show one nonblocking reminder per pending snapshot. It does not force a sync continuation. Failures leave work pending without indefinitely blocking normal work. Hook processes run under the host's permissions, so the checks do not replace host sandboxing. There is no permanent background AI worker, and instruction loading or a hook request does not prove completed AI analysis.
 
 ## Agent permissions are scoped
 

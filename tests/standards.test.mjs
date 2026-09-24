@@ -7,7 +7,7 @@ import { temporaryDirectory, sourceNote } from './helpers.mjs';
 import { evaluationPacket, gradePredictions } from '../scripts/evaluate.mjs';
 
 async function setup(t) {
-  const root = await temporaryDirectory(t, 'doc-vault-standards-');
+  const root = await temporaryDirectory(t, 'edw-doc-standards-');
   await mkdir(path.join(root, 'src'));
   await writeFile(path.join(root, 'src', 'threshold.py'), 'def accepts_batch(count):\n    return count > 3\n');
   await writeFile(path.join(root, 'src', 'unrelated.py'), 'def label():\n    return "fixture"\n');

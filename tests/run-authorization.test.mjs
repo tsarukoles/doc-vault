@@ -37,12 +37,12 @@ test('host lifecycle revokes only the affected session and compaction preserves 
   const other = auth.begin({ command: 'standards', session_id: b }, host).run_id;
   invalidateRuns(root, { hook_event_name: 'SessionStart', source: 'compact', session_id: a });
   invalidateRuns(root, { hook_event_name: 'SubagentStop', agent_type: 'Explore', session_id: a });
-  invalidateRuns(root, { hook_event_name: 'SubagentStop', agent_type: 'doc-vault:worker', session_id: a });
+  invalidateRuns(root, { hook_event_name: 'SubagentStop', agent_type: 'edw-doc:worker', session_id: a });
   auth.check(first, 'vault_publish');
   for (const event of ['UserPromptSubmit', 'Stop', 'SessionEnd', 'SubagentStop']) {
     start(root, a);
     const id = auth.begin({ command: 'build', session_id: a }, host).run_id;
-    invalidateRuns(root, { hook_event_name: event, session_id: a, agent_type: 'doc-vault:curator' });
+    invalidateRuns(root, { hook_event_name: event, session_id: a, agent_type: 'edw-doc:curator' });
     assert.throws(() => auth.check(id, 'vault_scan'), /ended|expired/);
     auth.check(other, 'vault_assess');
   }
@@ -128,7 +128,7 @@ test('host cancellation and lifecycle scripts close broker grants without blocki
   assert.equal((await client.call('vault_scan', { run_id })).isError, true);
   run_id = (await client.call('vault_begin', { command: 'build', session_id: sessionId })).structuredContent.run_id;
   const script = fileURLToPath(new URL('../scripts/run-lifecycle.mjs', import.meta.url));
-  const result = spawnSync(process.execPath, [script], { cwd: root, env: { ...process.env, DOC_VAULT_ROOT: root }, input: JSON.stringify({ hook_event_name: 'SubagentStop', agent_type: 'doc-vault:curator', session_id: sessionId }), encoding: 'utf8', windowsHide: true });
+  const result = spawnSync(process.execPath, [script], { cwd: root, env: { ...process.env, EDW_DOC_ROOT: root }, input: JSON.stringify({ hook_event_name: 'SubagentStop', agent_type: 'edw-doc:curator', session_id: sessionId }), encoding: 'utf8', windowsHide: true });
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.stdout, '');
   assert.equal((await client.call('vault_scan', { run_id })).isError, true);

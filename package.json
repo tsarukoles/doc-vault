@@ -1,11 +1,11 @@
 {
-  "name": "doc-vault-plugin",
-  "version": "0.1.3",
+  "name": "edw-doc-plugin",
+  "version": "0.2.0",
   "private": true,
   "description": "Evidence-backed local repository documentation and onboarding for Claude Code.",
   "type": "module",
   "engines": { "node": ">=20" },
-  "bin": { "doc-vault": "scripts/cli.mjs" },
+  "bin": { "edw-doc": "scripts/cli.mjs" },
   "scripts": {
     "test": "node --test",
     "check": "node scripts/check-package.mjs"

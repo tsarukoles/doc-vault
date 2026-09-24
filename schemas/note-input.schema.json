@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "note-input.schema.json",
-  "title": "Doc Vault structured note publication",
+  "title": "EDW Doc structured note publication",
   "description": "Agent publication contract. Runtime checks also enforce source eligibility, current evidence and safe managed paths. Agents set a file-note slug to source_paths[0]; runtime derives its path from the source. Publication remains draft even if reviewed is requested.",
   "type": "object",
   "properties": {
