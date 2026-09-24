@@ -4,10 +4,11 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { sha256, rootDirectory, relativePath, validateVaultName, checkedPath, readBytes, makeDirectory, writeAtomic, removeOwnedFile, ensureIgnore } from './security.mjs';
-import { inventory, identityAndChanges, stripContent, inventoryDigest, gitState, assertUntrackedVault } from './inventory.mjs';
+import { inventory, identityAndChanges, stripContent, inventoryDigest, gitState, assertUntrackedVault, ignoreDiagnostics } from './inventory.mjs';
 import { analyzeRepository } from './analyze.mjs';
 import { renderVault, notePath, renderAnalysisIndex } from './render.mjs';
 import { inspectWorkbook } from './readers.mjs';
+import { makeRule, reconcileStandards, standardsFingerprint, fileStandards, standardsCoverage, renderStandards, withStandards, applies, RESULTS, START, END } from './standards.mjs';
 
 export const PACKAGE_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 export const VERSION = JSON.parse(fs.readFileSync(path.join(PACKAGE_ROOT,'package.json'),'utf8')).version;
@@ -17,21 +18,23 @@ const noChanges=changes=>!Object.values(changes).some(values=>values.length);
 const textValue=(value,max=16000)=>{
   if(typeof value!=='string'||value.length>max||value.includes('\0')) throw new Error('Invalid or oversized text field.');
   if(/<\/?[a-z][^>]*>|!\[/i.test(value)) throw new Error('Raw HTML and image embeds are not allowed in generated notes.');
+  if(value.includes(START)||value.includes(END))throw new Error('Managed standards markers cannot be supplied by the model.');
   return value;
 };
 const yaml=value=>JSON.stringify(value).replace(/\[/g,'\\u005b').replace(/\]/g,'\\u005d');
 
 function noteLinks(text) {
   const prose=text.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/,'').replace(/^\s*(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\s*\1\s*$/gm,'').replace(/(`+)[^\n]*?\1/g,'');
-  return [...prose.matchAll(/\[\[([^\]\n]+)\]\]/g)].map(match=>match[1].split('|')[0].split('#')[0]).filter(Boolean);
+  return [...prose.matchAll(/\[\[([^\]\n]+)\]\]/g)].map(match=>match[1].split(/\\?\|/)[0].split('#')[0]).filter(Boolean);
 }
 
-export async function createEngine(target,{vaultName='doc-vault'}={}) {
+export async function createEngine(target,{vaultName='edw-doc'}={}) {
   const root=rootDirectory(target);
   validateVaultName(vaultName);
   const vault=()=>checkedPath(root,vaultName,{allowMissing:true,write:true});
   const vaultFile=(relative,allowMissing=false)=>checkedPath(vault(),relative,{allowMissing,write:true});
   const statePath='.system/state.json';
+  const catalog=()=>JSON.parse(readBytes(PACKAGE_ROOT,'packs/standards/catalog.json',512*1024).toString('utf8'));
   const readState=()=>{
     if(!fs.existsSync(vault()) || !fs.existsSync(vaultFile(statePath,true))) return null;
     const state=JSON.parse(readBytes(vault(),statePath,64*1024*1024).toString('utf8'));
@@ -58,6 +61,13 @@ export async function createEngine(target,{vaultName='doc-vault'}={}) {
     assertUntrackedVault(root,vaultName);
   }
   function initialize() {
+    if(vaultName==='edw-doc'&&!fs.existsSync(vault())) {
+      const legacy=checkedPath(root,'doc-vault',{allowMissing:true});
+      if(fs.existsSync(legacy)&&fs.lstatSync(legacy).isDirectory()&&fs.existsSync(checkedPath(legacy,'.system/owner.json',{allowMissing:true}))) {
+        const marker=JSON.parse(readBytes(legacy,'.system/owner.json',8192).toString('utf8'));
+        if(marker.product==='doc-vault')throw new Error('An existing doc-vault/ needs explicit migration to edw-doc/. Use the CLI migrate command, or DOC_VAULT_NAME=doc-vault to keep that vault.');
+      }
+    }
     assertVaultOwnership();
     // Check the exceptional write before creating the vault.
     checkedPath(root,'.gitignore',{allowMissing:true,write:true});
@@ -97,11 +107,12 @@ export async function createEngine(target,{vaultName='doc-vault'}={}) {
   }
   function assertCurrent(state) {
     const check=currentRecords(state);
-    if(inventoryDigest(check.records)!==state.snapshot.source_digest||state.version!==VERSION||gitState(root).head!==state.snapshot.head||fs.existsSync(vaultFile('.system/pending.json',true))) throw new Error('Refresh the changed repository or pending publication before publishing or reviewing analysis.');
+    if(inventoryDigest(check.records)!==state.snapshot.source_digest||state.version!==VERSION||gitState(root).head!==state.snapshot.head||fs.existsSync(vaultFile('.system/pending.json',true))||standardsFingerprint(reconcileStandards(state.standards,check.records,catalog(),state.snapshot.created_at))!==standardsFingerprint(state.standards)) throw new Error('Refresh the changed repository, standards, or pending publication before publishing or reviewing analysis.');
   }
   function currentSource(sourcePath,state) {
     relativePath(sourcePath);
     if(sourcePath===vaultName || sourcePath.startsWith(`${vaultName}/`)) throw new Error('The vault is never a source input.');
+    if(sourcePath.split('/').includes('.claude'))throw new Error('Local Claude session metadata is excluded from source analysis.');
     const known=state.records.find(r=>r.path===sourcePath);
     if(!known || !STATES.includes(known.status)) throw new Error('Source is not an approved, inspected file. Scan first or consult coverage.');
     const bytes=readBytes(root,sourcePath,2*1024*1024);
@@ -229,6 +240,29 @@ export async function createEngine(target,{vaultName='doc-vault'}={}) {
     removeOwnedFile(vault(),'.system/pending.json');
   }
 
+  // Standards output is derived from validated records, never supplied as prose
+  // by the assessor. A rule or result edit also invalidates exact-note reviews.
+  function standardsUpdates(state,{policyChanged=false,sourcePaths}={}) {
+    const outputs=renderStandards(state);
+    for(const record of state.records.filter(r=>r.status==='included'&&(!sourcePaths||sourcePaths.includes(r.path)))) {
+      const note=notePath(record.path);
+      outputs[note]=withStandards(readBytes(vault(),note,4*1024*1024).toString('utf8'),state,record);
+    }
+    if(policyChanged)for(const [note,entry] of Object.entries(state.enrichments||{})) {
+      const content=outputs[note]??readBytes(vault(),note,4*1024*1024).toString('utf8');
+      outputs[note]=content.replace(/^freshness: current$/m,'freshness: stale');
+      state.needs_analysis[note]={kind:entry.kind,source_paths:entry.source_paths,invalidated_at:new Date().toISOString(),reason:'The standards catalog or its policy evidence changed. Recheck relevant claims and standards assessments.'};
+      delete state.reviews[note];
+    }
+    for(const [note,content] of Object.entries(outputs)) {
+      if(sha256(content)===state.generated[note])delete outputs[note];
+      else delete state.reviews[note];
+    }
+    const projected={...state,generated:{...state.generated,...Object.fromEntries(Object.entries(outputs).map(([p,c])=>[p,sha256(c)]))}};
+    outputs['analysis-index.md']=renderAnalysisIndex(projected);
+    return outputs;
+  }
+
   const engine={
     root,vaultName,version:VERSION,
     async scan() {return locked(async()=>{
@@ -238,7 +272,8 @@ export async function createEngine(target,{vaultName='doc-vault'}={}) {
       const digest=inventoryDigest(records);
       const git=gitState(root);
       const pending=fs.existsSync(vaultFile('.system/pending.json',true));
-      if(previous&&previous.version===VERSION&&previous.snapshot.source_digest===digest&&previous.snapshot.head===git.head&&!pending) return {snapshot:previous.snapshot,changes,coverage:summary(records),profile:previous.analysis.profile,vault:vaultName,root,unchanged:true,invalidated_note_paths:Object.keys(previous.needs_analysis||{})};
+      const standards=reconcileStandards(previous?.standards,records,catalog(),new Date().toISOString());
+      if(previous&&previous.version===VERSION&&previous.snapshot.source_digest===digest&&previous.snapshot.head===git.head&&!pending&&standardsFingerprint(standards)===standardsFingerprint(previous.standards)) return {snapshot:previous.snapshot,changes,coverage:summary(records),profile:previous.analysis.profile,vault:vaultName,root,unchanged:true,invalidated_note_paths:Object.keys(previous.needs_analysis||{}),standards:standardsCoverage(previous),ignore:ignoreDiagnostics(root,vaultName)};
       const created_at=new Date().toISOString();
       const snapshot={id:`s_${sha256(`${digest}|${git.head}|${created_at}`).slice(0,20)}`,created_at,head:git.head,branch:git.branch,source_digest:digest};
       for(const record of records) {
@@ -246,8 +281,9 @@ export async function createEngine(target,{vaultName='doc-vault'}={}) {
         record.analyzed_at=before?.sha256===record.sha256&&before?.status===record.status&&previous.version===VERSION?before.analyzed_at||created_at:created_at;
       }
       const analysis=analyzeRepository(records);
-      const state={schema_version:SCHEMA_VERSION,version:VERSION,snapshot,records:stripContent(records),analysis,generated:{},enrichments:{},reviews:{},needs_analysis:{...previous?.needs_analysis},coverage:summary(records)};
+      const state={schema_version:SCHEMA_VERSION,version:VERSION,snapshot,records:stripContent(records),analysis,standards,generated:{},enrichments:{},reviews:{},needs_analysis:{...previous?.needs_analysis},coverage:summary(records)};
       const outputs=renderVault({records,analysis,snapshot,previous,version:VERSION,vaultName});
+      Object.assign(outputs,renderStandards(state));
       const baseline={...outputs};
       let invalidated=0;
       const retire=(note)=>{
@@ -259,7 +295,7 @@ export async function createEngine(target,{vaultName='doc-vault'}={}) {
         delete state.enrichments[note];delete state.reviews[note];
       };
       for(const [note,entry] of Object.entries(previous?.enrichments||{})) {
-        const same=previous.version===VERSION&&entry.dependencies.every(dep=>records.some(r=>r.path===dep.path&&r.sha256===dep.sha256&&r.status===dep.status));
+        const same=previous.version===VERSION&&entry.standards_hash===standardsFingerprint(standards)&&entry.dependencies.every(dep=>records.some(r=>r.path===dep.path&&r.sha256===dep.sha256&&r.status===dep.status));
         const alive=entry.source_paths.every(p=>records.some(r=>r.path===p&&STATES.includes(r.status)));
         const contextSame=entry.kind==='file'?entry.neighborhood===neighborhood(entry.dependencies.map(d=>d.path),state):previous.snapshot.source_digest===digest;
         if(same&&alive&&contextSame&&fs.existsSync(vaultFile(note,true))) {
@@ -279,21 +315,29 @@ export async function createEngine(target,{vaultName='doc-vault'}={}) {
         if(!item.source_paths.some(p=>records.some(r=>r.path===p&&STATES.includes(r.status)))){delete state.needs_analysis[note];continue;}
         if(!outputs[note])outputs[note]=`---\ntype: retired-analysis\nfreshness: stale\n---\n\n# Analysis needs refresh\n\n${item.reason}\n\n[[index|Vault index]]\n`;
       }
+      for(const record of records.filter(r=>r.status==='included')) {
+        const note=notePath(record.path);
+        outputs[note]=withStandards(outputs[note],state,record);
+        if(state.reviews[note]?.note_sha256!==sha256(outputs[note]))delete state.reviews[note];
+      }
       outputs['analysis-index.md']=renderAnalysisIndex({...state,generated:Object.fromEntries(Object.entries(outputs).map(([note,content])=>[note,sha256(content)]))});
       // Persist normalized source fingerprints only; timestamps are not inventory inputs.
       state.snapshot.source_digest=inventoryDigest(records.map(({analyzed_at,...r})=>r));
       assertCurrent(state);
       publishBatch(outputs,state,previous);
-      return {snapshot,changes,coverage:state.coverage,profile:analysis.profile,vault:vaultName,root,invalidated_notes:invalidated,invalidated_note_paths:Object.keys(state.needs_analysis)};
+      return {snapshot,changes,coverage:state.coverage,profile:analysis.profile,vault:vaultName,root,invalidated_notes:invalidated,invalidated_note_paths:Object.keys(state.needs_analysis),standards:standardsCoverage(state),ignore:ignoreDiagnostics(root,vaultName)};
     },{init:true});},
     async refresh(){return engine.scan();},
     async status(){
       const state=readState();
-      if(!state)return {initialized:false,fresh:false,version:VERSION,vault:vaultName,root};
+      if(!state)return {initialized:false,fresh:false,version:VERSION,vault:vaultName,root,ignore:ignoreDiagnostics(root,vaultName)};
       const {records,changes}=currentRecords(state);
       const git=gitState(root);
       const pending=fs.existsSync(vaultFile('.system/pending.json',true));
-      return {initialized:true,fresh:noChanges(changes)&&state.version===VERSION&&state.snapshot.head===git.head&&!pending,changes,version:VERSION,generated_version:state.version,snapshot:state.snapshot,coverage:summary(records),pending_update:pending,pending_analysis:Object.keys(state.needs_analysis||{}).length,vault:vaultName,root};
+      const currentStandards=reconcileStandards(state.standards,records,catalog(),state.snapshot.created_at);
+      const standardsFresh=standardsFingerprint(currentStandards)===standardsFingerprint(state.standards);
+      const liveState={...state,records,standards:currentStandards,analysis:noChanges(changes)?state.analysis:analyzeRepository(records)};
+      return {initialized:true,fresh:noChanges(changes)&&state.version===VERSION&&state.snapshot.head===git.head&&!pending&&standardsFresh,changes,version:VERSION,generated_version:state.version,snapshot:state.snapshot,coverage:summary(records),pending_update:pending,pending_analysis:Object.keys(state.needs_analysis||{}).length,vault:vaultName,root,standards:standardsCoverage(liveState),ignore:ignoreDiagnostics(root,vaultName)};
     },
     async list({kind,offset=0,limit=100}={}){
       const state=requireState();
@@ -326,10 +370,73 @@ export async function createEngine(target,{vaultName='doc-vault'}={}) {
       return {matches,truncated:false};
     },
     async packet({path:sourcePath}={}){
-      const state=requireState(),source=currentSource(sourcePath,state);
+      const state=requireState();assertCurrent(state);
+      const source=currentSource(sourcePath,state);
       const {bytes,...clean}=source;
-      return {source:clean,facts:state.analysis.files.find(f=>f.path===sourcePath)||null,relationships:state.analysis.relations.filter(r=>[sourcePath,source.id].includes(r.from)||[sourcePath,source.id].includes(r.to)),profile:state.analysis.profile,snapshot:state.snapshot,source_preview:await engine.read({path:sourcePath})};
+      return {source:clean,facts:state.analysis.files.find(f=>f.path===sourcePath)||null,relationships:state.analysis.relations.filter(r=>[sourcePath,source.id].includes(r.from)||[sourcePath,source.id].includes(r.to)),standards:source.status==='included'?fileStandards(state,source):[],profile:state.analysis.profile,snapshot:state.snapshot,source_preview:await engine.read({path:sourcePath})};
     },
+    async standards({path:sourcePath,offset=0,limit=100}={}) {
+      const state=requireState();assertCurrent(state);
+      if(!Number.isInteger(offset)||offset<0||!Number.isInteger(limit)||limit<1||limit>100)throw new Error('Invalid standards pagination.');
+      let rules;
+      if(sourcePath!==undefined) {
+        const record=currentSource(sourcePath,state);
+        if(record.status!=='included')throw new Error('Standards assessment is for included source files.');
+        rules=fileStandards(state,record).map(({rule,assessment})=>({...rule,assessment}));
+      } else rules=Object.values(state.standards.rules).sort((a,b)=>a.id.localeCompare(b.id));
+      return {rules:rules.slice(offset,offset+limit),total:rules.length,offset,limit,coverage:standardsCoverage(state),snapshot:state.snapshot.id};
+    },
+    async rule(input={}) {return locked(async()=>{
+      const state=requireState();assertCurrent(state);
+      if(!['declared','convention'].includes(input.authority))throw new Error('Custom rules must be declared project requirements or observed conventions; bundled advisory rules are immutable.');
+      const before=state.standards.rules[input.id];
+      if(before?.authority==='advisory')throw new Error('Bundled advisory rules cannot be overridden. Register a separately evidenced project rule.');
+      if(before&&before.category!==input.category)throw new Error('A rule category is stable. Use a distinct id for a different rule.');
+      if(!before&&Object.keys(state.standards.rules).length>=200)throw new Error('The bounded catalog supports at most 200 rules.');
+      const values={};
+      for(const [key,max] of Object.entries({title:240,requirement:4000,rationale:4000,verification:4000})) {
+        values[key]=textValue(input[key],max);
+        if(!values[key].trim())throw new Error(`Rule ${key} cannot be empty.`);
+        if(noteLinks(values[key]).length)throw new Error('Rule text uses plain descriptions and evidence; wiki navigation is generated by the broker.');
+      }
+      const evidence=evidenceCheck(input.evidence,state);
+      const rule=makeRule({...values,id:input.id,category:input.category,scope:input.scope,authority:input.authority,evidence,registered_at:new Date().toISOString()});
+      if(!before&&state.generated[rule.note_path])throw new Error('The rule destination is already occupied by a different managed note. Choose a distinct rule id.');
+      if(before?.hash===rule.hash&&before.freshness==='current')return {rule:before,unchanged:true};
+      const previousGenerated={...state.generated};
+      state.standards.rules[rule.id]=rule;
+      const outputs=standardsUpdates(state,{policyChanged:true});
+      evidenceCheck(evidence,state);assertCurrent(state);
+      publishUpdates(outputs,state,previousGenerated);
+      return {rule,coverage:standardsCoverage(state),invalidated_note_paths:Object.keys(state.needs_analysis)};
+    });},
+    async assess({path:sourcePath,expected_source_sha256,assessments}={}) {return locked(async()=>{
+      const state=requireState();assertCurrent(state);
+      const source=currentSource(sourcePath,state);
+      if(source.status!=='included'||source.sha256!==expected_source_sha256)throw new Error('Assessment requires an included source and its current source hash.');
+      if(!Array.isArray(assessments)||!assessments.length||assessments.length>100)throw new Error('Supply 1–100 rule assessments.');
+      const entries={},now=new Date().toISOString();
+      for(const input of assessments) {
+        const rule=state.standards.rules[input.rule_id];
+        if(!rule||rule.hash!==input.rule_hash||rule.freshness!=='current')throw new Error('Assessment rule hash is missing, stale, or its policy evidence needs refresh.');
+        if(!applies(rule,source))throw new Error('The rule scope does not include this source.');
+        if(!RESULTS.includes(input.result))throw new Error('Invalid assessment result.');
+        if(input.result==='noncompliant'&&rule.authority!=='declared')throw new Error('Noncompliant requires an explicit declared project requirement; advisory guidance or conventions may diverge.');
+        if(entries[rule.id])throw new Error('Assess each rule once per call.');
+        const rationale=textValue(input.rationale,4000);
+        if(!rationale.trim()||noteLinks(rationale).length)throw new Error('Supply a plain-language rationale; navigation is derived.');
+        const evidence=evidenceCheck(input.evidence,state);
+        if(!evidence.some(e=>e.path===sourcePath))throw new Error('Assessment evidence must include the assessed source itself.');
+        const dependencies=dependenciesFor([...new Set([sourcePath,...evidence.map(e=>e.path)])],state);
+        entries[rule.id]={rule_id:rule.id,rule_hash:rule.hash,source_hash:source.sha256,result:input.result,rationale,evidence,dependencies,neighborhood:neighborhood(dependencies.map(d=>d.path),state),assessed_at:now,method:'source-inspection'};
+      }
+      const previousGenerated={...state.generated};
+      state.standards.assessments[sourcePath]={...state.standards.assessments[sourcePath],...entries};
+      const outputs=standardsUpdates(state,{sourcePaths:[sourcePath]});
+      for(const item of Object.values(entries))evidenceCheck(item.evidence,state);
+      assertCurrent(state);publishUpdates(outputs,state,previousGenerated);
+      return {path:sourcePath,assessments:fileStandards(state,source),coverage:standardsCoverage(state)};
+    });},
     async publish(input={}) {return locked(async()=>{
       const state=requireState();
       assertCurrent(state);
@@ -349,6 +456,7 @@ export async function createEngine(target,{vaultName='doc-vault'}={}) {
         if(typeof input.slug!=='string'||!/^[a-z0-9][a-z0-9/-]{0,160}$/.test(input.slug))throw new Error('Use a lowercase, path-safe note slug.');
         relativePath(input.slug);destination=`${prefixes[input.kind]}/${input.slug}.md`;
       }
+      if(Object.hasOwn(renderStandards(state),destination)||/^standards\/(?:general|languages|testing|cicd|databases|transformations)\//.test(destination))throw new Error('Standards catalog pages are broker-owned. Use vault_rule and vault_assess.');
       if(!Array.isArray(input.sections)||!input.sections.length||input.sections.length>20)throw new Error('Provide 1–20 evidenced sections.');
       const sections=input.sections.map(section=>({heading:textValue(section.heading,160),text:textValue(section.text,16000),evidence:evidenceCheck(section.evidence,state)}));
       const evidence=sections.flatMap(s=>s.evidence);
@@ -363,7 +471,7 @@ export async function createEngine(target,{vaultName='doc-vault'}={}) {
       for(const section of sections) {
         lines.push(`## ${section.heading.replace(/[\r\n]/g,' ')}`,'',section.text,'','Evidence:',...section.evidence.map(e=>`- \`${e.path}${e.selector?(e.selector.kind==='workbook'?' [workbook]':` [${e.selector.sheet}${e.selector.cell?`!${e.selector.cell}`:''}]`):`:${e.start_line}-${e.end_line}`}\` · SHA-256 \`${e.sha256}\``),'');
       }
-      const content=lines.join('\n');
+      const content=input.kind==='file'?withStandards(lines.join('\n'),state,state.records.find(r=>r.path===sourcePaths[0])):lines.join('\n');
       const linkErrors=checkLinks(content,new Set(Object.keys(state.generated)),destination);
       if(linkErrors.length)throw new Error(linkErrors.join('; '));
       const absolute=vaultFile(destination,true);
@@ -374,7 +482,7 @@ export async function createEngine(target,{vaultName='doc-vault'}={}) {
       assertCurrent(state);
       const previousGenerated={...state.generated};
       state.generated[destination]=sha256(content);
-      state.enrichments[destination]={kind:input.kind,source_paths:sourcePaths,dependencies,neighborhood:neighborhood(dependencies.map(d=>d.path),state),evidence,analyzed_at:now,producer_version:VERSION};
+      state.enrichments[destination]={kind:input.kind,source_paths:sourcePaths,dependencies,neighborhood:neighborhood(dependencies.map(d=>d.path),state),standards_hash:standardsFingerprint(state.standards),evidence,analyzed_at:now,producer_version:VERSION};
       delete state.reviews[destination];
       if(state.needs_analysis)delete state.needs_analysis[destination];
       publishUpdates({[destination]:content,'analysis-index.md':renderAnalysisIndex(state)},state,previousGenerated);
@@ -419,10 +527,17 @@ export async function createEngine(target,{vaultName='doc-vault'}={}) {
         try {evidenceCheck(review.evidence,state);}catch(error){errors.push(`${note}: review evidence is stale: ${error.message}`);}
       }
       const freshness=await engine.status();
+      warnings.push(...freshness.ignore.warnings);
+      const standards=freshness.standards;
+      if(standards['not-assessed'])warnings.push(`${standards['not-assessed']} candidate standards assessments are missing or stale; this does not imply a violation.`);
+      for(const [sourcePath,items] of Object.entries(state.standards?.assessments||{}))for(const item of Object.values(items)) {
+        const rule=state.standards.rules[item.rule_id];
+        if(item.result==='noncompliant'&&rule?.authority!=='declared')errors.push(`${sourcePath}: noncompliant assessment lacks a declared requirement.`);
+      }
       if(freshness.pending_analysis)warnings.push(`${freshness.pending_analysis} previously enriched notes need fresh analysis; inspect the needs_analysis fields in the note inventory.`);
       if(!freshness.fresh)warnings.push('Sources, plugin version, or publication state changed; run sync.');
       if(state.records.some(r=>r.status==='unsupported'||r.status==='error'))warnings.push('Some sources are unsupported or unreadable; see coverage.');
-      return {ok:errors.length===0,errors,warnings,snapshot:state.snapshot.id,checks:['managed-file integrity','wiki targets','source coverage','evidence locators','freshness'],limitations:['Mechanical validation does not establish semantic truth or runtime behavior.']};
+      return {ok:errors.length===0,errors,warnings,snapshot:state.snapshot.id,standards,checks:['managed-file integrity','wiki targets','source coverage','evidence locators','freshness','standards authority and coverage'],limitations:['Mechanical validation does not establish semantic truth or runtime behavior.']};
     },
     async context({topic}={}){
       if(topic==='index') {

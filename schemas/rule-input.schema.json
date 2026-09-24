@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rule-input.schema.json",
+  "title": "Doc Vault repository standard registration",
+  "description": "A source-backed declared requirement or observed convention. Bundled advisory rules are managed by the distribution. The broker additionally validates identifiers, scope, authority, current evidence, and publication ownership.",
+  "type": "object",
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,79}$" },
+    "category": { "enum": ["general", "languages/python", "languages/javascript", "languages/typescript", "testing", "cicd", "databases", "transformations"] },
+    "title": { "type": "string", "minLength": 1 },
+    "requirement": { "type": "string", "minLength": 1 },
+    "rationale": { "type": "string", "minLength": 1 },
+    "verification": { "type": "string", "minLength": 1 },
+    "scope": {
+      "type": "object",
+      "description": "OR matching across language, source kind, and exact source path/directory prefix lists. Empty lists together match all included files. Paths are not glob patterns.",
+      "properties": {
+        "languages": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "kinds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "paths": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+      },
+      "required": ["languages", "kinds", "paths"],
+      "additionalProperties": false
+    },
+    "authority": { "enum": ["declared", "convention"] },
+    "evidence": { "type": "array", "minItems": 1, "items": { "$ref": "evidence.schema.json" } }
+  },
+  "required": ["id", "category", "title", "requirement", "rationale", "verification", "scope", "authority", "evidence"],
+  "additionalProperties": false
+}

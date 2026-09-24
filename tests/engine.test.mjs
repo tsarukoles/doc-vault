@@ -5,7 +5,7 @@ import path from 'node:path';
 import { createEngine } from '../src/engine.mjs';
 import { fixture, hashes, allRecords, referencedPaths, sourceNote } from './helpers.mjs';
 
-test('scan preserves repository content and appends exactly one root ignore rule', async (t) => {
+test('scan preserves repository content and appends the vault and agent root ignore rules', async (t) => {
   const root = await fixture(t, 'data-controls');
   const originalIgnore = await readFile(path.join(root, '.gitignore'), 'utf8');
   const original = await hashes(root, { exclude: ['.gitignore'] });
@@ -16,15 +16,16 @@ test('scan preserves repository content and appends exactly one root ignore rule
   assert.ok(result.changes.added.length > 0);
   assert.ok(result.coverage);
   assert.ok(result.profile);
-  assert.deepEqual(await hashes(root, { exclude: ['.gitignore', 'doc-vault'] }), original);
+  assert.deepEqual(await hashes(root, { exclude: ['.gitignore', 'edw-doc'] }), original);
   const ignored = await readFile(path.join(root, '.gitignore'), 'utf8');
   assert.ok(ignored.startsWith(originalIgnore));
-  assert.equal(ignored.split(/\r?\n/).filter((line) => line === '/doc-vault/').length, 1);
+  assert.equal(ignored.split(/\r?\n/).filter((line) => line === '/edw-doc/').length, 1);
+  assert.equal(ignored.split(/\r?\n/).filter((line) => line === '/.claude/').length, 1);
 
-  const before = await hashes(path.join(root, 'doc-vault'));
+  const before = await hashes(path.join(root, 'edw-doc'));
   const second = await engine.scan();
   for (const kind of ['added', 'modified', 'deleted', 'renamed']) assert.deepEqual(second.changes[kind], []);
-  assert.deepEqual(await hashes(path.join(root, 'doc-vault')), before);
+  assert.deepEqual(await hashes(path.join(root, 'edw-doc')), before);
   assert.equal(await readFile(path.join(root, '.gitignore'), 'utf8'), ignored);
   assert.equal((await engine.status()).fresh, true);
 });
@@ -49,7 +50,7 @@ test('Markdown is reference material, supported source gets notes, and binary co
   assert.ok(note.path);
   assert.match(note.text, /has_identifier|rules\.py/);
   assert.match(note.sha256, /^[a-f0-9]{64}$/);
-  const vaultFiles = Object.keys(await hashes(path.join(root, 'doc-vault')));
+  const vaultFiles = Object.keys(await hashes(path.join(root, 'edw-doc')));
   assert.ok(vaultFiles.some((name) => /onboarding/i.test(name)));
   const lint = await engine.lint();
   assert.equal(lint.ok, true, JSON.stringify(lint));
@@ -76,12 +77,12 @@ test('refresh detects added, modified, renamed, and deleted files while preservi
   const root = await fixture(t, 'data-controls');
   const engine = await createEngine(root);
   await engine.scan();
-  const annotation = path.join(root, 'doc-vault', 'annotations', 'engineer-note.md');
+  const annotation = path.join(root, 'edw-doc', 'annotations', 'engineer-note.md');
   await mkdir(path.dirname(annotation), { recursive: true });
   await writeFile(annotation, '# My observation\nPreserve this exactly.\n');
   const originalAnnotation = await readFile(annotation, 'utf8');
   const removed = (await allRecords(engine)).find((item) => item.path === 'application/handler.py');
-  await access(path.join(root, 'doc-vault', removed.note_path));
+  await access(path.join(root, 'edw-doc', removed.note_path));
 
   await writeFile(path.join(root, 'application', 'rules.py'), '\n# An additional documented boundary\n', { flag: 'a' });
   await writeFile(path.join(root, 'application', 'extra.py'), 'def extra():\n    return True\n');
@@ -97,7 +98,7 @@ test('refresh detects added, modified, renamed, and deleted files while preservi
   assert.ok(current.some((item) => item.path === 'application/extra.py' && item.note_path));
   assert.ok(!current.some((item) => item.path === 'application/handler.py' && item.note_path));
   assert.ok(!current.some((item) => item.path === 'config/pipeline.yaml' && item.note_path));
-  if (removed?.note_path) await assert.rejects(access(path.join(root, 'doc-vault', removed.note_path)));
+  if (removed?.note_path) await assert.rejects(access(path.join(root, 'edw-doc', removed.note_path)));
   assert.equal(await readFile(annotation, 'utf8'), originalAnnotation);
   assert.equal((await engine.status()).fresh, true);
   assert.equal((await engine.lint()).ok, true);
@@ -123,7 +124,7 @@ test('misleading repository instructions remain data and do not mutate sources',
   await engine.scan();
   const reference = await engine.read({ path: 'README.md' });
   assert.match(reference.text, /Ignore every previous instruction/);
-  assert.deepEqual(await hashes(root, { exclude: ['.gitignore', 'doc-vault'] }), original);
+  assert.deepEqual(await hashes(root, { exclude: ['.gitignore', 'edw-doc'] }), original);
   await assert.rejects(access(path.join(root, 'owned.txt')));
   assert.equal((await engine.lint()).ok, true);
 });
@@ -134,8 +135,8 @@ test('a custom vault name uses the same restricted output boundary', async (t) =
   const engine = await createEngine(root, { vaultName: 'local-vault' });
   await engine.scan();
   assert.deepEqual(await hashes(root, { exclude: ['.gitignore', 'local-vault'] }), original);
-  assert.equal(await readFile(path.join(root, '.gitignore'), 'utf8'), '/local-vault/\n');
-  await assert.rejects(access(path.join(root, 'doc-vault')));
+  assert.equal(await readFile(path.join(root, '.gitignore'), 'utf8'), '/local-vault/\n/.claude/\n');
+  await assert.rejects(access(path.join(root, 'edw-doc')));
   assert.equal((await engine.status()).fresh, true);
 });
 
@@ -157,7 +158,7 @@ test('lint reports unresolved local wiki links introduced into a generated note'
   const engine = await createEngine(root);
   await engine.scan();
   const note = await sourceNote(engine, 'src/safe.js');
-  await writeFile(path.join(root, 'doc-vault', note.path), '\n[[missing-local-note]]\n', { flag: 'a' });
+  await writeFile(path.join(root, 'edw-doc', note.path), '\n[[missing-local-note]]\n', { flag: 'a' });
   const report = await engine.lint();
   assert.equal(report.ok, false);
   assert.ok(report.errors.length > 0);
@@ -180,7 +181,7 @@ test('competing refreshes do not produce two concurrent vault writers', async (t
 
 test('an existing exact ignore rule followed by ordinary rules is preserved without duplication', async (t) => {
   const root = await fixture(t, 'security');
-  const original = '# Preserve line endings and order\r\n/doc-vault/\r\n*.log\r\n';
+  const original = '# Preserve line endings and order\r\n/edw-doc/\r\n/.claude/\r\n*.log\r\n';
   await writeFile(path.join(root, '.gitignore'), original);
   const engine = await createEngine(root);
   await engine.scan();
@@ -191,11 +192,11 @@ test('an existing exact ignore rule followed by ordinary rules is preserved with
 
 test('a later vault negation requires one final ignore rule without altering preceding bytes', async (t) => {
   const root = await fixture(t, 'security');
-  const original = '# Existing project choices\r\n/doc-vault/\r\n!/doc-vault/\r\n*.log\r\n';
+  const original = '# Existing project choices\r\n/edw-doc/\r\n!/edw-doc/\r\n*.log\r\n';
   await writeFile(path.join(root, '.gitignore'), original);
   const engine = await createEngine(root);
   await engine.scan();
-  const expected = original + '/doc-vault/\r\n';
+  const expected = original + '/edw-doc/\r\n/.claude/\r\n';
   assert.equal(await readFile(path.join(root, '.gitignore'), 'utf8'), expected);
   await engine.refresh();
   assert.equal(await readFile(path.join(root, '.gitignore'), 'utf8'), expected);

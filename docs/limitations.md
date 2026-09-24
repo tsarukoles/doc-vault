@@ -13,6 +13,8 @@ This version provides a deterministic local baseline and a broker-guided host-ag
 - **Local refresh has two parts.** CLI/watch refreshes static state; an active skill updates model explanations. There is no unattended background model service.
 - **The vault is local.** Git ignore prevents ordinary source commits from sharing it; this version does not provide team merges, remote publishing, or cross-repository aggregation.
 - **Checks have different meanings.** Lint validates mechanics. Agent review assesses source support. Neither establishes human approval, formal compliance, or complete correctness.
+- **Standards assessments are qualified source judgments.** Bundled guidance is advisory and offline. Repository rule registration and static checks cannot prove that an organization adopted a mandate, that a linter ran, or that an assessment is semantically correct. Applicability candidates require inspection; unknown, not-assessed, and stale results remain visible.
+- **Ignored settings may still be tracked.** The root `.claude` ignore rule does not remove previously committed settings. The plugin reports tracked paths without changing Git tracking or settings content.
 - **Agent restrictions are not universal isolation.** Other host tools and sessions remain governed by their own permissions. Use a native sandbox for stronger host-wide enforcement.
 
 For an unsupported area, preserve the useful baseline, show the missing evidence, and identify the reader or operational source needed to improve it. Do not silently fill the gap with invented detail.

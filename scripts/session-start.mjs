@@ -11,13 +11,15 @@ try {
   const event=input.trim()?JSON.parse(input):{};
   const initial=process.env.DOC_VAULT_ROOT || event.cwd || process.cwd();
   const root=process.env.DOC_VAULT_ROOT ? initial : gitRead(initial,['rev-parse','--show-toplevel'])?.trim() || initial;
-  const vaultName=process.env.DOC_VAULT_NAME || 'doc-vault';
+  const vaultName=process.env.DOC_VAULT_NAME || 'edw-doc';
   if(fs.existsSync(path.join(root,vaultName))) {
     const engine=await createEngine(root,{vaultName});
     const status=await engine.status();
     const message=status.initialized?(status.fresh?'Doc Vault source inventory is current. Agent explanations may still require independent review.':'Doc Vault has changed inputs or an incomplete update. Use /doc-vault:sync before relying on generated explanations.'):'Doc Vault is not initialized.';
     const backlog=status.pending_analysis?` ${status.pending_analysis} previous explanations need fresh analysis; run /doc-vault:sync.`:'';
     process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:'SessionStart',additionalContext:message+backlog}})+'\n');
+  } else if(!process.env.DOC_VAULT_NAME&&fs.existsSync(path.join(root,'doc-vault','.system','owner.json'))) {
+    process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:'SessionStart',additionalContext:'A legacy doc-vault folder is present. The default vault folder is now edw-doc. Use the explicit CLI migrate command with --root <repository> --from doc-vault --to edw-doc, or set DOC_VAULT_NAME=doc-vault to continue using the existing folder. No files were changed.'}})+'\n');
   }
 } catch(error) {
   // Missing runtimes, invalid state, or inaccessible workspaces must not prevent

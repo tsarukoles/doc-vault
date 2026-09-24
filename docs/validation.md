@@ -1,12 +1,14 @@
 # Validation record
 
-This record describes development verification of version 0.1.0. It is not a production certification.
+This record describes development verification of version 0.1.1. It is not a production certification.
 
 ## Local verification
 
-The automated suite passes: **45 tests, no failures or skips**. It exercises source-write boundaries, narrow ignore updates, path traversal, redirected output paths, Git worktrees, tracking checks, file maps, source fingerprints, additions/deletions/renames, dependency invalidation, evidence locators, exact-note review, publication recovery, and preservation of annotations.
+The automated suite passes: **76 tests, no failures or skips**. It exercises source-write boundaries, narrow ignore updates, path traversal, redirected output paths, Git worktrees, tracking checks, file maps, source fingerprints, additions/deletions/renames, dependency invalidation, evidence locators, exact-note review, publication recovery, and preservation of annotations.
 
 It also covers CLI and MCP transport behavior, a read-only session hook, CSV and XLSX inspection limits, rejected media embeds, linked agent-note navigation, and a persistent queue for explanations requiring fresh analysis after static refresh.
+
+Version 0.1.1 adds missing-ignore creation, `.claude` exclusion and tracked-file diagnostics, guarded folder migration, schema-one upgrade compatibility, standards/backlinks, source and authority fingerprints, advisory-versus-declared enforcement, unknown results, dependency/relationship invalidation, and live stale counts before sync. Grader tests verify the mechanics of detecting wrong labels and invalid evidence; they do not demonstrate an agent's ability to find defects.
 
 Run from the plugin checkout:
 
@@ -19,9 +21,13 @@ The package check validates bundled manifests, assets, versions, references, ski
 
 Development verification ran on Windows with Node.js 24.11.0 and Git. Node.js 20 is the declared minimum; other Node versions and operating systems have not been exercised in this development session.
 
-## Newcomer walkthrough
+## Source-analysis evaluation
 
-A separate analysis pass used a temporary synthetic data-control repository and followed the bundled workflow: discover sources, inspect entry-point and dependency evidence, publish a bounded onboarding guide, review the exact note, find it through the analysis index, and run lint. The walkthrough completed without executing target source code. The index correctly distinguished the new guide from file notes that still had only static analysis.
+Six fictional cases were analyzed by an agent separately from the answer key. The original run produced **5/6 deterministic classification matches and 6/6 valid evidence checks**. A separate agent found all six explanations consistent with the qualitative rubric; this is not human approval. The mismatch exposed an ambiguous `finding` field: a policy inconsistency was confused with an established implementation violation. Original predictions and the score are preserved, and future packet instructions clarify the distinction. See the [evaluation record](research/evaluation-v0.1.1.md) for artifacts and context-isolation limits.
+
+## Earlier newcomer walkthrough
+
+During version 0.1.0 development, a separate analysis pass used a temporary synthetic data-control repository and followed the bundled workflow: discover sources, inspect entry-point and dependency evidence, publish a bounded onboarding guide, review the exact note, find it through the analysis index, and run lint. The walkthrough completed without executing target source code. The index correctly distinguished the new guide from file notes that still had only static analysis.
 
 This checks the workflow and runtime contract. It does not establish that an arbitrary model will fully understand every repository.
 

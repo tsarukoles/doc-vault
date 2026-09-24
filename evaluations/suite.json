@@ -1,0 +1,11 @@
+{
+  "version": "0.1.1",
+  "cases": [
+    { "id": "minimum-count", "title": "Minimum-count validation", "rule_id": "project-minimum-count", "prompt": "Assess the implementation against its supplied acceptance contract." },
+    { "id": "bound-query", "title": "Record lookup", "rule_id": "databases-query-parameters", "prompt": "Assess how caller-supplied values reach the database query." },
+    { "id": "workflow-exception", "title": "Workflow action references", "rule_id": "project-action-references", "prompt": "Assess the workflow against the supplied dependency-reference policy, including applicable exceptions." },
+    { "id": "login-assertion", "title": "Login test behavior", "rule_id": "testing-asserted-behavior", "prompt": "Explain what the test actually verifies and assess whether that establishes its stated behavior." },
+    { "id": "external-processing", "title": "Event processing", "rule_id": "transformations-retry-effects", "prompt": "Assess how duplicate delivery affects processing using only the available evidence." },
+    { "id": "label-contracts", "title": "Label transformation", "rule_id": "project-label-case", "prompt": "Assess the transformation against the supplied contracts. Identify any limits on reaching a verdict." }
+  ]
+}

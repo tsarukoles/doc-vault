@@ -95,17 +95,31 @@ export function removeOwnedFile(root, relative) {
   fs.unlinkSync(absolute);
 }
 
+export function ignorePlan(root, vaultName) {
+  validateVaultName(vaultName);
+  const ignorePath = checkedPath(root, '.gitignore', { allowMissing: true });
+  const exists = fs.existsSync(ignorePath);
+  const original = exists ? readBytes(root, '.gitignore', 1024 * 1024) : Buffer.alloc(0);
+  const text = original.toString('utf8');
+  const requiredRules = [`/${vaultName}/`, '/.claude/'];
+  const meaningful = text.split(/\r?\n/).filter(line => line.trim() && !line.startsWith('#'));
+  // A later negation may re-include a protected path. Appending a final root
+  // rule is conservative and avoids interpreting Git's pattern language here.
+  const missingRules = requiredRules.filter(rule => {
+    const equivalent = new Set([rule, rule.slice(1), rule.slice(0,-1), rule.slice(1,-1)]);
+    const existing = meaningful.findLastIndex(line => equivalent.has(line));
+    return existing < 0 || meaningful.slice(existing+1).some(line => line.startsWith('!'));
+  });
+  return { exists, original, requiredRules, missingRules };
+}
+
 export function ensureIgnore(root, vaultName) {
   const ignorePath = checkedPath(root, '.gitignore', { allowMissing: true, write: true });
-  const original = fs.existsSync(ignorePath) ? readBytes(root, '.gitignore', 1024 * 1024) : Buffer.alloc(0);
+  const { original, missingRules } = ignorePlan(root, vaultName);
+  if (!missingRules.length) return false;
   const text = original.toString('utf8');
-  const rule = `/${vaultName}/`;
-  // Append the exact root rule after any later negations. Leave other bytes intact.
-  const meaningful = text.split(/\r?\n/).filter(line => line.trim() && !line.startsWith('#'));
-  const existing=meaningful.lastIndexOf(rule);
-  if (existing>=0&&!meaningful.slice(existing+1).some(line=>line.startsWith('!'))) return false;
   const eol = text.includes('\r\n') ? '\r\n' : '\n';
-  const suffix = `${text && !text.endsWith('\n') ? eol : ''}${rule}${eol}`;
+  const suffix = `${text && !text.endsWith('\n') ? eol : ''}${missingRules.join(eol)}${eol}`;
   const fd = fs.openSync(ignorePath, fs.constants.O_WRONLY | fs.constants.O_APPEND | fs.constants.O_CREAT | (fs.constants.O_NOFOLLOW || 0), 0o600);
   try {
     const stat = fs.fstatSync(fd);

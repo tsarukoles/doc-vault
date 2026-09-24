@@ -1,0 +1,3 @@
+# Evaluation evidence hashes must survive Windows and Unix checkouts unchanged.
+evaluations/fixtures/** text eol=lf
+evaluations/results/** text eol=lf

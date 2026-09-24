@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { checkedPath, readBytes, sha256 } from './security.mjs';
+import { checkedPath, ignorePlan, readBytes, sha256 } from './security.mjs';
 
-const OMIT_DIRECTORIES = new Set(['.git', '.hg', '.svn', 'node_modules', '.venv', 'venv', '__pycache__', '.pytest_cache', '.mypy_cache', '.next', '.nuxt', 'coverage', '.turbo', '.cache', 'dist', 'build', 'vendor', '.idea']);
+const OMIT_DIRECTORIES = new Set(['.git', '.claude', '.hg', '.svn', 'node_modules', '.venv', 'venv', '__pycache__', '.pytest_cache', '.mypy_cache', '.next', '.nuxt', 'coverage', '.turbo', '.cache', 'dist', 'build', 'vendor', '.idea']);
 const TEXT_EXTENSIONS = new Set(['.js','.jsx','.ts','.tsx','.mjs','.cjs','.py','.java','.kt','.go','.rs','.c','.h','.cpp','.cs','.rb','.php','.sh','.ps1','.bat','.cmd','.sql','.r','.scala','.swift','.vue','.svelte','.html','.css','.scss','.json','.jsonc','.yaml','.yml','.toml','.ini','.cfg','.conf','.xml','.tf','.tfvars','.hcl','.csv','.tsv','.txt','.md','.mdx','.rst','.properties','.graphql','.gql','.proto','.feature','.lock','.gitignore','.editorconfig']);
 const SECRET_FILE = /(^|\/)(?:\.env(?:\..*)?|credentials(?:\.[^/]*)?|secrets?(?:\.[^/]*)?|id_(?:rsa|ed25519)|[^/]*\.(?:pem|key|p12|pfx)|[^/]*\.tfstate(?:\..*)?)$/i;
 const SECRET_CONTENT = /-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----|\b(?:AKIA|ASIA)[A-Z0-9]{16}\b|\b(?:password|api[_-]?key|client[_-]?secret|access[_-]?token|secret[_-]?access[_-]?key)\s*[:=]\s*["']([^"'\r\n]{12,})["']/i;
@@ -31,6 +31,18 @@ export function assertUntrackedVault(root, vaultName) {
   const tracked = gitRead(root, ['ls-files', '-z', '--', vaultName]);
   if(tracked===null&&hasGitMetadata(root))throw new Error('Git metadata is present but cannot be inspected. Restore Git access before generating a vault.');
   if (tracked?.length) throw new Error('The vault contains tracked files. Choose an untracked vault directory before generating.');
+}
+
+export function ignoreDiagnostics(root, vaultName) {
+  const plan = ignorePlan(root, vaultName);
+  const tracked = gitRead(root, ['ls-files', '-z', '--', '.claude']);
+  const trackedClaudeFiles = tracked === null ? [] : tracked.split('\0').filter(Boolean);
+  const warnings = [];
+  if (plan.missingRules.length) warnings.push(`Required root ignore rules need repair: ${plan.missingRules.join(', ')}. Run build or sync.`);
+  if (trackedClaudeFiles.length) warnings.push(`${trackedClaudeFiles.length} .claude files are already tracked. Ignore rules do not untrack them; review this manually.`);
+  if (tracked === null && hasGitMetadata(root)) warnings.push('Git metadata could not be inspected for tracked .claude files.');
+  return { gitignore_exists:plan.exists, required_rules:plan.requiredRules, missing_rules:plan.missingRules,
+    tracked_claude_files:trackedClaudeFiles, git_available:tracked !== null, warnings };
 }
 
 function hasGitMetadata(root) {
@@ -74,7 +86,7 @@ export function inventory(root, vaultName, {maxFiles=20000, maxBytes=2*1024*1024
         continue;
       }
       if (!entry.isFile()) { records.push({...base,reason:'Non-regular file; not inspected.'}); continue; }
-      if(entry.name==='.git') {records.push({...base,kind:'metadata',reason:'Git worktree metadata pointer; not a documentation source.'});continue;}
+      if(entry.name==='.git'||entry.name==='.claude') {records.push({...base,kind:'metadata',reason:'Git or agent metadata; not a documentation source.'});continue;}
       const stat = fs.lstatSync(absolute);
       const record = {...base,...classify(file),size:stat.size};
       if (SECRET_FILE.test(file) && !/\.env\.(?:example|sample|template)$/i.test(file)) { records.push({...record,status:'excluded',reason:'Sensitive filename policy.'}); continue; }

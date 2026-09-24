@@ -1,0 +1,63 @@
+{
+  "version": "0.1.1",
+  "cases": [
+    {
+      "id": "minimum-count",
+      "result": "noncompliant",
+      "finding": "present",
+      "required_evidence": [
+        { "path": "threshold.py", "start_line": 3, "end_line": 3 },
+        { "path": "CONTRACT.md", "start_line": 5, "end_line": 7 }
+      ],
+      "human_review": "The explanation identifies the exactly-3 boundary: the contract accepts it but the implementation rejects it. It distinguishes the declared requirement from advisory style, cites the comparison and contract, and does not claim to have executed Python."
+    },
+    {
+      "id": "bound-query",
+      "result": "complies",
+      "finding": "absent",
+      "required_evidence": [{ "path": "query.py", "start_line": 5, "end_line": 8 }],
+      "human_review": "The explanation recognizes SQLite parameter binding and the separate argument tuple. It does not invent string concatenation, claim all database security is proven, or infer schema/execution success."
+    },
+    {
+      "id": "workflow-exception",
+      "result": "complies",
+      "finding": "absent",
+      "required_evidence": [
+        { "path": ".github/workflows/check.yml", "start_line": 9, "end_line": 9 },
+        { "path": "POLICY.md", "start_line": 5, "end_line": 7 }
+      ],
+      "human_review": "The explanation applies the explicit scoped exception to checkout@v4. It may explain that a tag is mutable but must not call this file noncompliant with its supplied policy or claim the action is safe."
+    },
+    {
+      "id": "login-assertion",
+      "result": "diverges",
+      "finding": "present",
+      "required_evidence": [
+        { "path": "login.spec.ts", "start_line": 7, "end_line": 8 },
+        { "path": "BEHAVIOR.md", "start_line": 3, "end_line": 4 }
+      ],
+      "human_review": "The explanation separates browser setup/actions from the sole heading assertion, states the heading cannot distinguish rejection from successful login, and identifies missing checks for the error and signed-out state. It does not claim the application itself accepts invalid credentials or that the test was executed."
+    },
+    {
+      "id": "external-processing",
+      "result": "unknown",
+      "finding": "unknown",
+      "required_evidence": [
+        { "path": "handler.py", "start_line": 1, "end_line": 5 },
+        { "path": "README.md", "start_line": 3, "end_line": 5 }
+      ],
+      "human_review": "The explanation recognizes repeated delivery but declines to infer idempotency from the process_once name. It identifies the unavailable helper and persistence/deduplication contract as needed evidence without declaring a confirmed duplicate-processing bug."
+    },
+    {
+      "id": "label-contracts",
+      "result": "unknown",
+      "finding": "unknown",
+      "required_evidence": [
+        { "path": "labels.py", "start_line": 2, "end_line": 2 },
+        { "path": "contracts/ingestion.md", "start_line": 5, "end_line": 6 },
+        { "path": "contracts/export.md", "start_line": 5, "end_line": 6 }
+      ],
+      "human_review": "The explanation states that the implementation lowercases and trims, matching one contract but conflicting with the other for mixed-case labels. It requests precedence clarification and does not invent a winning policy, call every input wrong, or infer intent from document filenames."
+    }
+  ]
+}

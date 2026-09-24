@@ -1,0 +1,72 @@
+{
+  "evaluation_kind": "deterministic-grading-of-submitted-output",
+  "plugin_version": "0.1.1",
+  "declared_run": {
+    "model": "unknown",
+    "provider": "OpenAI",
+    "run_at": "2026-09-24T03:55:15Z"
+  },
+  "ok": false,
+  "totals": {
+    "cases": 6,
+    "classifications_passed": 5,
+    "evidence_checks_passed": 6,
+    "deterministic_cases_passed": 5
+  },
+  "human_review_required": true,
+  "limitation": "This validator checks declared classifications and evidence locations against a hidden answer key. It does not establish that the rationale follows from the source, prove model identity, measure runtime behavior, or replace a human review. Fixtures are never executed.",
+  "errors": [],
+  "cases": [
+    {
+      "id": "minimum-count",
+      "classification_pass": true,
+      "evidence_pass": true,
+      "deterministic_pass": true,
+      "errors": [],
+      "human_review": "The explanation identifies the exactly-3 boundary: the contract accepts it but the implementation rejects it. It distinguishes the declared requirement from advisory style, cites the comparison and contract, and does not claim to have executed Python."
+    },
+    {
+      "id": "bound-query",
+      "classification_pass": true,
+      "evidence_pass": true,
+      "deterministic_pass": true,
+      "errors": [],
+      "human_review": "The explanation recognizes SQLite parameter binding and the separate argument tuple. It does not invent string concatenation, claim all database security is proven, or infer schema/execution success."
+    },
+    {
+      "id": "workflow-exception",
+      "classification_pass": true,
+      "evidence_pass": true,
+      "deterministic_pass": true,
+      "errors": [],
+      "human_review": "The explanation applies the explicit scoped exception to checkout@v4. It may explain that a tag is mutable but must not call this file noncompliant with its supplied policy or claim the action is safe."
+    },
+    {
+      "id": "login-assertion",
+      "classification_pass": true,
+      "evidence_pass": true,
+      "deterministic_pass": true,
+      "errors": [],
+      "human_review": "The explanation separates browser setup/actions from the sole heading assertion, states the heading cannot distinguish rejection from successful login, and identifies missing checks for the error and signed-out state. It does not claim the application itself accepts invalid credentials or that the test was executed."
+    },
+    {
+      "id": "external-processing",
+      "classification_pass": true,
+      "evidence_pass": true,
+      "deterministic_pass": true,
+      "errors": [],
+      "human_review": "The explanation recognizes repeated delivery but declines to infer idempotency from the process_once name. It identifies the unavailable helper and persistence/deduplication contract as needed evidence without declaring a confirmed duplicate-processing bug."
+    },
+    {
+      "id": "label-contracts",
+      "classification_pass": false,
+      "evidence_pass": true,
+      "deterministic_pass": false,
+      "errors": [
+        "Expected result=unknown and finding=unknown."
+      ],
+      "human_review": "The explanation states that the implementation lowercases and trims, matching one contract but conflicting with the other for mixed-case labels. It requests precedence clarification and does not invent a winning policy, call every input wrong, or infer intent from document filenames."
+    }
+  ],
+  "packet_sha256": "8410de61cf6c1923d70f192582875c413d7350a7de2defed4d95db76fdfb4c05"
+}

@@ -1,6 +1,6 @@
 {
   "name": "doc-vault-plugin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Evidence-backed local repository documentation and onboarding for Claude Code.",
   "type": "module",

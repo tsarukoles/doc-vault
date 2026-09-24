@@ -41,7 +41,7 @@ test('CLI scan/read/status operate on the explicit repository and emit machine-r
   assert.equal(lint.status, 0, lint.stderr);
   assert.equal(JSON.parse(lint.stdout).ok, true);
   assert.deepEqual(await hashes(unrelated), {});
-  assert.deepEqual(await hashes(root, { exclude: ['.gitignore', 'doc-vault'] }), before);
+  assert.deepEqual(await hashes(root, { exclude: ['.gitignore', 'edw-doc'] }), before);
 });
 
 test('CLI rejects unknown options without initializing the target', async (t) => {
@@ -69,15 +69,17 @@ test('MCP stdio negotiates, exposes bounded tools, and keeps its repository bind
     request(7, 'tools/call', { name: 'vault_read', arguments: { path: '../outside.js' } }),
     request(8, 'ping'),
     request(9, 'unsupported/method'),
+    request(10, 'tools/call', { name: 'vault_standards', arguments: { path: 'src/safe.js' } }),
+    request(11, 'tools/call', { name: 'vault_assess', arguments: { path: 'src/safe.js', expected_source_sha256: '0'.repeat(64), assessments: [] } }),
   ];
   const result = run(mcp, [], {
     cwd: unrelated,
     input: messages.map((message) => JSON.stringify(message)).join('\n') + '\n',
-    env: { DOC_VAULT_ROOT: root, DOC_VAULT_NAME: 'doc-vault', CLAUDE_PROJECT_DIR: unrelated },
+    env: { DOC_VAULT_ROOT: root, DOC_VAULT_NAME: 'edw-doc', CLAUDE_PROJECT_DIR: unrelated },
   });
   assert.equal(result.status, 0, result.stderr);
   const responses = result.stdout.trim().split(/\r?\n/).map((line) => JSON.parse(line));
-  assert.equal(responses.length, 9, 'Notifications must not receive responses and stdout must contain only JSON-RPC');
+  assert.equal(responses.length, 11, 'Notifications must not receive responses and stdout must contain only JSON-RPC');
   const byId = new Map(responses.map((response) => [response.id, response]));
   assert.equal(byId.get(1).result.protocolVersion, '2025-06-18');
   assert.ok(byId.get(2).result.tools.some((tool) => tool.name === 'vault_publish'));
@@ -89,13 +91,16 @@ test('MCP stdio negotiates, exposes bounded tools, and keeps its repository bind
   assert.equal(byId.get(7).result.isError, true);
   assert.deepEqual(byId.get(8).result, {});
   assert.equal(byId.get(9).error.code, -32601);
+  assert.equal(byId.get(10).result.isError, false);
+  assert.ok(byId.get(10).result.structuredContent.rules.every(rule=>rule.assessment.result==='not-assessed'));
+  assert.equal(byId.get(11).result.isError, true, 'Malformed assessments are rejected at the transport boundary');
   assert.deepEqual(await hashes(unrelated), {});
-  assert.deepEqual(await hashes(root, { exclude: ['.gitignore', 'doc-vault'] }), before);
+  assert.deepEqual(await hashes(root, { exclude: ['.gitignore', 'edw-doc'] }), before);
 });
 
 test('SessionStart is quiet without a vault and checks existing freshness without writes', async (t) => {
   const root = await fixture(t, 'security');
-  const options = { cwd: root, input: JSON.stringify({ cwd: root }), env: { DOC_VAULT_ROOT: root, DOC_VAULT_NAME: 'doc-vault' } };
+  const options = { cwd: root, input: JSON.stringify({ cwd: root }), env: { DOC_VAULT_ROOT: root, DOC_VAULT_NAME: 'edw-doc' } };
   const original = await hashes(root);
   const absent = run(sessionStart, [], options);
   assert.equal(absent.status, 0, absent.stderr);

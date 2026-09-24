@@ -34,7 +34,11 @@ Examples: an import supports a dependency candidate; it does not prove a functio
 
 Track at least three scopes separately: inventory coverage, model enrichment, and evidence review. A file can have a static baseline note while its operational purpose remains unresolved. A current hash can establish freshness without establishing semantic quality.
 
-File notes should be concise. Component and flow notes explain cross-file behavior once. Onboarding links those explanations into a useful reading path. This prevents one-note-per-file coverage from turning into repetitive prose.
+File notes should be comprehensive enough to explain meaningful contents, inputs/outputs, ordered execution, branches, helper behavior, validation, failure handling, test assertions, and supported findings. Language stays simple and depth follows complexity; a small constant definition and a multi-branch transformation should not receive the same length. Component and flow notes explain cross-file behavior once. Onboarding links those explanations into a useful reading path.
+
+Test analysis reads setup, actions, assertions, helper checks, mocks, and cleanup. A description saying "validates output" is insufficient if the assertion only checks nonemptiness. The explanation states what inspected tests do and do not establish, without claiming any execution result.
+
+Standards coverage is separate from inventory, model enrichment, and review. Initial candidate rules do not mean a file complies. The specialist inspects applicability, authority, source, and legitimate exceptions before recording a qualified result. See [standards](standards.md) for the catalog and status meanings.
 
 ## Extending analysis
 

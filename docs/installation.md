@@ -10,7 +10,9 @@ From the repository to document:
 claude --plugin-dir /absolute/path/to/doc-plugin
 ```
 
-Run `/doc-vault:status` to inspect the configured repository. Run `/doc-vault:build` to create the ignored vault. Initial build may create the root `.gitignore` or append its exact `/doc-vault/` entry; all other generated files stay under the vault. The plugin's read-only session-start hook reports an existing vault's freshness but never creates or refreshes it.
+Run `/doc-vault:status` to inspect the configured repository. Run `/doc-vault:build` to create the ignored `edw-doc/` vault. Build/sync creates a missing root `.gitignore` or appends the configured vault rule and `/.claude/`; existing content is preserved. The default rules are `/edw-doc/` and `/.claude/`. Already tracked `.claude` files are reported without changing tracking. All other generated files stay under the vault. The plugin's read-only session-start hook reports status but never creates or refreshes the vault or ignore rules.
+
+After build, run `/doc-vault:standards` for the dedicated standards assessment, then `/doc-vault:review` for a separate source-evidence review. Static baseline notes and initial standards candidates are not completed AI analysis.
 
 The examples use POSIX-style absolute paths. On Windows, quote an absolute path such as `"C:\path\to\doc-plugin"`. The plugin location and target repository are different paths. Do not run a target scan against the installation directory by mistake.
 
@@ -35,9 +37,21 @@ Keep the plugin manifest and marketplace entry versions consistent when releasin
 
 Auto-update is a host/marketplace setting, not a background feature of this runtime. Enable it only through the approved host configuration. A version update does not automatically re-analyze every existing vault; run sync or build when analysis behavior changes.
 
+### Moving a 0.1.0 vault
+
+Version 0.1.1 uses `edw-doc/` by default. The plugin and command namespace remain `doc-vault`. A previous `doc-vault/` folder is not silently moved or merged. From the plugin checkout, migrate it explicitly:
+
+```sh
+node scripts/cli.mjs migrate --root /absolute/path/to/repository --from doc-vault --to edw-doc
+```
+
+Use an absolute path to the CLI when running elsewhere. Check the reported source and destination before continuing with `/doc-vault:sync`; follow with `/doc-vault:standards` to assess current rules. The migration preserves annotations and source files. Do not manually combine generated state from two vaults. If you intentionally retain the old location, configure the broker's `DOC_VAULT_NAME=doc-vault`; CLI operations can use `--vault-name doc-vault`. A configured custom location should be used consistently by the broker and CLI.
+
+Ignoring `.claude/` affects untracked settings and session files. It does not remove previously committed files from tracking. Projects that intentionally share `.claude` settings must consider that tracking separately; the plugin never edits the settings or stages/removes them.
+
 ## Verify the installation
 
-The available skills should include build, sync, audit, onboard, ask, status, and review. The curator should expose only the plugin's named broker tools. If the MCP server does not start, verify Node availability and the plugin path; do not work around the failure by granting broad filesystem or shell tools to the analysis agent.
+The available skills should include build, sync, audit, onboard, ask, status, review, and standards. The four agents should expose only their named broker tools. The standards specialist has rule/assessment operations but no scan or general publication operation. If the MCP server does not start, verify Node availability and the plugin path; do not work around the failure by granting broad filesystem or shell tools to the analysis agent.
 
 Check reported source and vault roots before generating content. `DOC_VAULT_ROOT`, if explicitly configured, selects the target; otherwise the broker resolves the active Git root or working directory. The repository's source files should remain unchanged after a build, apart from the documented `.gitignore` entry.
 

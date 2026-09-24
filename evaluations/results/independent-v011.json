@@ -1,0 +1,74 @@
+{
+  "model": "unknown",
+  "provider": "OpenAI",
+  "plugin_version": "0.1.1",
+  "run_at": "2026-09-24T03:55:15Z",
+  "cases": [
+    {
+      "id": "minimum-count",
+      "rule_id": "project-minimum-count",
+      "result": "noncompliant",
+      "finding": "present",
+      "rationale": "The declared acceptance contract explicitly includes a count of exactly 3. The implementation returns record_count > 3, so exactly 3 produces false and is rejected. This contradicts the supplied requirement for threshold.py. The affected boundary is demonstrated directly by the comparison; this assessment does not claim that a test was executed or establish behavior for inputs outside the integer contract.",
+      "evidence": [
+        { "path": "CONTRACT.md", "sha256": "38a8b1c2e939db8ff663d735824e08c3c03408d713619b6786d4b3d64a4a0114", "start_line": 5, "end_line": 7 },
+        { "path": "threshold.py", "sha256": "cebe0fc28f7824d4861e97b1628675294db66fa8f67cdad3de78ca3560b67229", "start_line": 1, "end_line": 3 }
+      ]
+    },
+    {
+      "id": "bound-query",
+      "rule_id": "databases-query-parameters",
+      "result": "complies",
+      "finding": "absent",
+      "rationale": "The inspected lookup uses the sqlite3 connection API with a fixed SELECT statement containing a question-mark parameter placeholder. It passes record_id separately as a one-item tuple rather than interpolating it into SQL syntax. This satisfies the assigned advisory rule for this value in this query. The assessment is limited to source-level parameter separation; it does not establish database permissions, successful execution, or correctness of the full application.",
+      "evidence": [
+        { "path": "query.py", "sha256": "2baf6161e87b95f92c10efa212b30ab344d69db2e4bb9dac652c7d5d07292381", "start_line": 1, "end_line": 9 }
+      ]
+    },
+    {
+      "id": "workflow-exception",
+      "rule_id": "project-action-references",
+      "result": "complies",
+      "finding": "absent",
+      "rationale": "The local policy generally requires full commit identifiers but explicitly permits actions/checkout@v4 in this exact workflow. That is the only remote action reference shown, and it matches the scoped exception. The workflow therefore satisfies the supplied rule including its exception. The mutable tag could be discussed as general advisory context, but it is not a violation of this policy. Neither action safety nor actual workflow execution was verified.",
+      "evidence": [
+        { "path": "POLICY.md", "sha256": "edd0650aad7e67f6151511183e3520b78681557f7528b7c5c708cd3633f90269", "start_line": 5, "end_line": 7 },
+        { "path": ".github/workflows/check.yml", "sha256": "3daeb68cb63afc5f20cc846eeb4f97a02938e874328522df3ad99418c755ce48", "start_line": 8, "end_line": 10 }
+      ]
+    },
+    {
+      "id": "login-assertion",
+      "rule_id": "testing-asserted-behavior",
+      "result": "diverges",
+      "finding": "present",
+      "rationale": "The test opens login, enters credentials with an invalid password, and submits the form. Its only assertion checks visibility of the Portal heading. The supplied behavior says that heading appears on both the login page and signed-in home page, so it cannot distinguish rejection from an incorrect successful login. The test also never asserts the Invalid credentials message, despite promising an error in its title. Checking the error and signed-out state would support the stated scenario. This is divergence from the assigned advisory testing rule, not a claim of a declared compliance violation or an observed failing test; the test was not run.",
+      "evidence": [
+        { "path": "login.spec.ts", "sha256": "6d3a45b1fb8a425c447a5fe6bd053cef92b6673d97c9b0734b1eb3b1209e4758", "start_line": 3, "end_line": 9 },
+        { "path": "BEHAVIOR.md", "sha256": "14143bdb5cbbfbcb4f7ed7f348b13ee1687eeba13f1c06ad6fc0dd8a8546047f", "start_line": 3, "end_line": 4 }
+      ]
+    },
+    {
+      "id": "external-processing",
+      "rule_id": "transformations-retry-effects",
+      "result": "unknown",
+      "finding": "unknown",
+      "rationale": "Repeated queue delivery is explicitly possible, so the retry-effects rule is relevant. The handler delegates the event directly to shared_runtime.process_once, whose implementation and contract are unavailable. The helper name does not establish deduplication, event identity, persistence, or repeated side effects. Available source therefore cannot show either correct duplicate handling or a concrete defect. Inspecting the dependency contract and persistence behavior would be needed; no external access or execution was performed.",
+      "evidence": [
+        { "path": "handler.py", "sha256": "c849eb96145b6b60c0a1c45a540f51d399bbeaba08038645e987a20155154ce3", "start_line": 1, "end_line": 5 },
+        { "path": "README.md", "sha256": "910383eeac3bd9257d093348031d71cb21e130b43527013054a629b0065acd8f", "start_line": 3, "end_line": 5 }
+      ]
+    },
+    {
+      "id": "label-contracts",
+      "rule_id": "project-label-case",
+      "result": "unknown",
+      "finding": "present",
+      "rationale": "Both supplied contracts assign the same rule to the value returned by labels.normalize_label. They agree on trimming whitespace but conflict on letter case: export requires lowercase, while ingestion requires preserving original case. The implementation strips and lowercases, matching export but contradicting ingestion for mixed-case inputs. No precedence, exception, or separate caller scope resolves that conflict, so a single overall compliance verdict is unknown. The conflicting requirements are a definite inconsistency to resolve before changing the function; no execution result is claimed.",
+      "evidence": [
+        { "path": "contracts/export.md", "sha256": "0bfa0447964bec829a5cdadcdf358933d91e2a896bf027bf24bc844a766ed4f6", "start_line": 3, "end_line": 6 },
+        { "path": "contracts/ingestion.md", "sha256": "dd2cc4429ec5b7188b2bb9d7c1d4eb15cb92d72e1ae9d64a6592c68dfaf6ba1f", "start_line": 3, "end_line": 6 },
+        { "path": "labels.py", "sha256": "c517169697ca6ce57f10bbb71689b2505b790ac850039e7079e5c12ade0ec240", "start_line": 1, "end_line": 2 }
+      ]
+    }
+  ]
+}

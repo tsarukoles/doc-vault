@@ -1,5 +1,7 @@
 # Practices and improvement assessment
 
+Use `workflows/standards.md` for the dedicated catalog and per-file assessments. `packs/standards/catalog.json` contains maintained offline advisory guidance. Inspect its applicable rules through `vault_standards`; guidance remains advisory unless a separate current repository requirement establishes adoption. The specialist registers declared or convention rules and records source/rule-bound results. The curator's audit can explain a finding but cannot overwrite the broker's assessment tables.
+
 Classify each assessment as a supplied requirement, an observed convention, or an advisory suggestion. Cite the source for a requirement. For an observed pattern, describe the inspected sample and known exceptions. Do not convert majority style into a mandatory policy.
 
 ## Responsibility and placement

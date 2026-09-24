@@ -52,7 +52,7 @@ function locator(ev) {
 }
 
 export function renderAnalysisIndex(state) {
-  const entries = Object.entries(state.enrichments || {});
+  const entries = Object.entries(state.enrichments || {}).filter(([note])=>!state.needs_analysis?.[note]);
   const dates = [state.snapshot?.created_at, ...entries.map(([, entry]) => entry.analyzed_at), ...entries.map(([note]) => state.reviews?.[note]?.reviewed_at)].filter(Boolean).sort();
   const updated = dates.at(-1) || null;
   const groups = new Map();
@@ -73,7 +73,7 @@ export function renderAnalysisIndex(state) {
   return `---\ntype: analysis-index\nanalysis_level: navigation\nplugin_version: ${yaml(state.version || null)}\nsnapshot: ${yaml(state.snapshot?.id || null)}\nupdated_at: ${yaml(updated)}\n---\n\n# Agent explanations\n\nThis index lists current agent-generated explanations separately from the static baseline. A recorded agent review is qualified evidence review, not human approval or a guarantee of runtime correctness.\n\n${entries.length} current agent notes; ${explainedSources} of ${totalSources} included source files have a dedicated agent explanation. Unsupported and excluded material remains in ${wiki('reports/coverage.md', 'coverage')}.\n\n${sections || 'No agent explanations have been published yet. The source notes and onboarding pages currently contain static observations and investigation guidance. Run the build or onboard skill to add source-backed explanations.'}\n\nStart with ${wiki('onboarding/index.md', 'onboarding')}, ${wiki('index.md', 'the vault index')}, or ${wiki('file-map.md', 'the file map')}.\n`;
 }
 
-export function renderVault({ records, analysis, snapshot, previous, version, vaultName = 'doc-vault' }) {
+export function renderVault({ records, analysis, snapshot, previous, version, vaultName = 'edw-doc' }) {
   const output = {};
   const sourceByPath = new Map(records.map((record) => [record.path, record]));
   const fileByPath = new Map(analysis.files.map((file) => [file.path, file]));

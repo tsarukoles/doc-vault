@@ -1,6 +1,64 @@
 #!/usr/bin/env node
 import { createEngine, VERSION } from '../src/engine.mjs';
 import { setTimeout as sleep } from 'node:timers/promises';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import crypto from 'node:crypto';
+import { assertUntrackedVault, ignoreDiagnostics } from '../src/inventory.mjs';
+import { checkedPath, ensureIgnore, readBytes, rootDirectory, validateVaultName } from '../src/security.mjs';
+
+function migrateOwnedVault(rootInput, from, to) {
+  const root=rootDirectory(rootInput);
+  validateVaultName(from); validateVaultName(to);
+  if(from===to)throw new Error('Migration source and destination must differ.');
+  const source=checkedPath(root,from,{write:true});
+  const destination=checkedPath(root,to,{allowMissing:true,write:true});
+  if(fs.existsSync(destination))throw new Error('Migration destination already exists. Nothing was overwritten.');
+  if(!fs.lstatSync(source).isDirectory())throw new Error('Migration source must be an owned vault directory.');
+  const marker=JSON.parse(readBytes(source,'.system/owner.json',8192).toString('utf8'));
+  if(marker.product!=='doc-vault'||!Number.isInteger(marker.schema_version))throw new Error('Migration source has no recognized Doc Vault ownership marker.');
+  for(const reserved of ['.system/write-lock.json','.system/pending.json']) {
+    if(fs.existsSync(checkedPath(source,reserved,{allowMissing:true,write:true})))throw new Error('Migration refuses a vault with a writer lock or pending publication. Complete/recover it first.');
+  }
+  // The move preserves all bytes, including annotations. Refuse links and
+  // special files anywhere so the migrated write boundary is still ordinary.
+  let entries=0;
+  const inspect=relative=>{
+    const directory=relative?checkedPath(source,relative,{write:true}):source;
+    for(const entry of fs.readdirSync(directory,{withFileTypes:true})) {
+      if(++entries>100000)throw new Error('Vault exceeds the migration inspection limit.');
+      const local=relative?`${relative}/${entry.name}`:entry.name;
+      const absolute=checkedPath(source,local,{write:true});
+      const stat=fs.lstatSync(absolute);
+      if(stat.isDirectory())inspect(local);
+      else if(!stat.isFile())throw new Error('Migration only permits ordinary directories and files.');
+    }
+  };
+  inspect('');
+  assertUntrackedVault(root,from); assertUntrackedVault(root,to);
+  checkedPath(root,'.gitignore',{allowMissing:true,write:true});
+  const lockRelative='.system/write-lock.json';
+  const lockPath=checkedPath(source,lockRelative,{allowMissing:true,write:true});
+  const token=crypto.randomBytes(16).toString('hex');
+  const lock={host:os.hostname(),pid:process.pid,token,purpose:'vault-folder-migration'};
+  fs.writeFileSync(lockPath,JSON.stringify(lock)+'\n',{flag:'wx',mode:0o600});
+  let moved=false;
+  try {
+    // Ignore before moving: an interruption cannot leave generated output exposed.
+    ensureIgnore(root,to);
+    checkedPath(root,from,{write:true});
+    if(fs.existsSync(checkedPath(root,to,{allowMissing:true,write:true})))throw new Error('Migration destination appeared while preparing the move.');
+    fs.renameSync(source,destination);
+    moved=true;
+  } finally {
+    const lockRoot=moved?destination:source;
+    const current=JSON.parse(readBytes(lockRoot,lockRelative,8192).toString('utf8'));
+    if(current.token===token)fs.unlinkSync(checkedPath(lockRoot,lockRelative,{write:true}));
+  }
+  return {migrated:true,root,from,to,preserved:'Vault files, annotations, source references, and wiki links are unchanged. Both folders have the same repository-root depth.',
+    next_step:'Run /doc-vault:sync to refresh the version, source inventory, and assessments.',ignore:ignoreDiagnostics(root,to)};
+}
 
 const args=process.argv.slice(2);
 const command=args.shift()||'help';
@@ -8,13 +66,18 @@ const options={};
 try {
   while(args.length) {
     const key=args.shift();
-    if(!['--root','--vault-name','--path','--topic','--query','--interval','--limit','--kind'].includes(key)||!args.length)throw new Error(`Unknown or incomplete option: ${key}`);
+    if(!['--root','--vault-name','--path','--topic','--query','--interval','--limit','--kind','--from','--to'].includes(key)||!args.length)throw new Error(`Unknown or incomplete option: ${key}`);
     options[key.slice(2)]=args.shift();
   }
   if(command==='help'||command==='--help'||command==='-h') {
-    process.stdout.write(`Doc Vault ${VERSION}\n\nUsage: node scripts/cli.mjs <command> --root <repository>\n\nCommands:\n  scan, sync  Create/refresh a source-grounded structural vault\n  status      Report freshness without writing\n  lint        Check managed notes, links, evidence and coverage\n  list        List sources (--kind category, --limit 1..500)\n  read        Inspect approved source (--path relative/source)\n  packet      Get one source analysis packet (--path relative/source)\n  context     Read bundled guidance (--topic index or asset path)\n  watch       Poll and refresh (--interval seconds, minimum 2)\n\nOptional: --vault-name doc-vault\nScan/sync/watch write only the vault and append its exact root .gitignore entry.\nThey never run project code or install Git hooks. AI enrichment runs through the Claude Code plugin.\n`);
+    process.stdout.write(`Doc Vault ${VERSION}\n\nUsage: node scripts/cli.mjs <command> --root <repository>\n\nCommands:\n  scan, sync  Create/refresh a source-grounded structural vault\n  status      Report freshness without writing\n  lint        Check managed notes, links, evidence and coverage\n  list        List sources (--kind category, --limit 1..500)\n  read        Inspect approved source (--path relative/source)\n  packet      Get one source analysis packet (--path relative/source)\n  context     Read bundled guidance (--topic index or asset path)\n  watch       Poll and refresh (--interval seconds, minimum 2)\n  migrate     Move an owned vault (--from doc-vault --to edw-doc)\n\nOptional: --vault-name edw-doc\nScan/sync/watch write only the vault and append its root ignore rule plus /.claude/.\nMigration additionally moves the explicitly named owned vault; it never overwrites a destination.\nThey never run project code or install Git hooks. AI enrichment runs through the Claude Code plugin.\n`);
+  } else if(command==='migrate') {
+    if(!options.root||!options.from||!options.to)throw new Error('Migration requires explicit --root, --from, and --to.');
+    if(options['vault-name'])throw new Error('Use --from and --to for migration, not --vault-name.');
+    process.stdout.write(JSON.stringify(migrateOwnedVault(options.root,options.from,options.to),null,2)+'\n');
   } else {
-    const engine=await createEngine(options.root||process.cwd(),{vaultName:options['vault-name']||'doc-vault'});
+    if(options.from||options.to)throw new Error('--from and --to are only accepted for migration.');
+    const engine=await createEngine(options.root||process.cwd(),{vaultName:options['vault-name']||'edw-doc'});
     const output=value=>process.stdout.write(JSON.stringify(value,null,2)+'\n');
     if(command==='watch') {
       const interval=Number(options.interval||10);

@@ -8,13 +8,14 @@ import { fileURLToPath } from 'node:url';
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ASSET_ROOTS = ['agents', 'skills', 'policies', 'workflows', 'packs', 'templates', 'schemas', 'docs'];
 const CONTEXT_ROOTS = new Set(['policies', 'workflows', 'packs', 'templates', 'schemas', 'docs']);
-const SKILLS = ['build', 'sync', 'audit', 'onboard', 'ask', 'status', 'review'];
+const SKILLS = ['build', 'sync', 'audit', 'onboard', 'ask', 'status', 'review', 'standards'];
 const PREFIX = 'mcp__plugin_doc-vault_vault__';
-const READ_TOOLS = ['vault_status', 'vault_list', 'vault_read', 'vault_search', 'vault_context', 'vault_packet', 'vault_note'];
+const READ_TOOLS = ['vault_status', 'vault_list', 'vault_read', 'vault_search', 'vault_context', 'vault_packet', 'vault_note', 'vault_standards'];
 const AGENT_TOOLS = {
   curator: [...READ_TOOLS, 'vault_scan', 'vault_publish', 'vault_lint', 'vault_refresh'],
   worker: READ_TOOLS,
   reviewer: [...READ_TOOLS, 'vault_review'],
+  standards: [...READ_TOOLS, 'vault_rule', 'vault_assess'],
 };
 const REQUIRED = [
   'package.json', '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', '.mcp.json',
@@ -23,12 +24,13 @@ const REQUIRED = [
   'src/analyze.mjs', 'src/readers.mjs', 'src/render.mjs', 'policies/core.md',
   ...Object.keys(AGENT_TOOLS).map(name => `agents/${name}.md`),
   ...SKILLS.map(name => `skills/${name}/SKILL.md`),
-  ...['build', 'sync', 'audit', 'onboard', 'ask', 'status', 'review', 'discovery', 'file-analysis', 'flow']
+  ...['build', 'sync', 'audit', 'onboard', 'ask', 'status', 'review', 'standards', 'discovery', 'file-analysis', 'flow']
     .map(name => `workflows/${name}.md`),
   ...['generic', 'e2e', 'data-controls', 'standards'].map(name => `packs/${name}.md`),
   ...['file', 'component', 'flow', 'standard', 'finding', 'onboarding', 'profile'].map(name => `templates/${name}.md`),
-  ...['evidence', 'note-input', 'review-input'].map(name => `schemas/${name}.schema.json`),
-  ...['installation', 'architecture', 'security', 'tool-contract', 'analysis', 'limitations', 'plan', 'public-release-checklist', 'vault-layout']
+  'packs/standards/catalog.json',
+  ...['evidence', 'note-input', 'review-input', 'rule-input', 'assessment-input'].map(name => `schemas/${name}.schema.json`),
+  ...['installation', 'architecture', 'security', 'tool-contract', 'analysis', 'standards', 'limitations', 'plan', 'public-release-checklist', 'vault-layout']
     .map(name => `docs/${name}.md`),
 ];
 const VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
@@ -225,7 +227,7 @@ export function checkPackage(root = PACKAGE_ROOT) {
     if (metadata.background !== 'false') fail(`${file}: background must be false.`);
     const agent = /^doc-vault:([a-z0-9-]+)$/.exec(metadata.agent || '')?.[1];
     if (!agent || !agents.has(agent)) fail(`${file}: agent must reference a bundled namespaced agent.`);
-    const expectedAgent = name === 'review' ? 'reviewer' : 'curator';
+    const expectedAgent = name === 'review' ? 'reviewer' : name === 'standards' ? 'standards' : 'curator';
     if (SKILLS.includes(name) && agent !== expectedAgent) fail(`${file}: expected ${expectedAgent} agent.`);
     for (const field of ['tools', 'allowed-tools']) {
       if (metadata[field] === undefined) continue;
@@ -240,7 +242,10 @@ export function checkPackage(root = PACKAGE_ROOT) {
     catch (error) { fail(`${owner}: ${label} ${target} is unavailable (${error.message}).`); }
   }
   for (const [file, text] of documents) {
-    for (const match of text.matchAll(/\b(?:policies|workflows|packs|templates|docs|schemas)\/[A-Za-z0-9_./-]+\.(?:md|json)\b/g)) {
+    // References inside external research URLs belong to those projects, not
+    // this bundle. Markdown local links are checked separately below.
+    const localReferences = text.replace(/https?:\/\/[^\s)>"']+/g, '');
+    for (const match of localReferences.matchAll(/\b(?:policies|workflows|packs|templates|docs|schemas)\/[A-Za-z0-9_./-]+\.(?:md|json)\b/g)) {
       if (!CONTEXT_ROOTS.has(match[0].split('/')[0])) continue;
       validateReference(file, match[0], 'bundled context');
     }

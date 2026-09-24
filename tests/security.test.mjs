@@ -8,7 +8,7 @@ import { fixture, hashes, temporaryDirectory, allRecords } from './helpers.mjs';
 
 test('source operations reject parent traversal and absolute paths', async (t) => {
   const root = await fixture(t, 'security');
-  const outside = await temporaryDirectory(t, 'doc-vault-outside-');
+  const outside = await temporaryDirectory(t, 'edw-doc-outside-');
   const privateFile = path.join(outside, 'outside.txt');
   await writeFile(privateFile, 'outside source scope');
   const engine = await createEngine(root);
@@ -25,10 +25,10 @@ test('source operations reject parent traversal and absolute paths', async (t) =
 
 test('the generator rejects a vault path redirected outside the repository', async (t) => {
   const root = await fixture(t, 'security');
-  const outside = await temporaryDirectory(t, 'doc-vault-link-target-');
+  const outside = await temporaryDirectory(t, 'edw-doc-link-target-');
   await writeFile(path.join(outside, 'marker.txt'), 'unchanged');
   try {
-    await symlink(outside, path.join(root, 'doc-vault'), process.platform === 'win32' ? 'junction' : 'dir');
+    await symlink(outside, path.join(root, 'edw-doc'), process.platform === 'win32' ? 'junction' : 'dir');
   } catch (error) {
     if (['EPERM', 'EACCES', 'ENOTSUP'].includes(error.code)) return t.skip('The test host does not permit directory links.');
     throw error;
@@ -43,7 +43,7 @@ test('the generator rejects a vault path redirected outside the repository', asy
 
 test('the narrow ignore-file exception cannot modify a hard-linked file elsewhere', async (t) => {
   const root = await fixture(t, 'security');
-  const outside = await temporaryDirectory(t, 'doc-vault-ignore-target-');
+  const outside = await temporaryDirectory(t, 'edw-doc-ignore-target-');
   const target = path.join(outside, 'original.txt');
   await writeFile(target, '# Original text\n');
   try {
@@ -61,7 +61,7 @@ test('the narrow ignore-file exception cannot modify a hard-linked file elsewher
 
 test('source links cannot escape the repository read boundary', async (t) => {
   const root = await fixture(t, 'security');
-  const outside = await temporaryDirectory(t, 'doc-vault-source-target-');
+  const outside = await temporaryDirectory(t, 'edw-doc-source-target-');
   await writeFile(path.join(outside, 'outside.js'), 'export const secret = "outside";');
   try {
     await symlink(outside, path.join(root, 'linked-source'), process.platform === 'win32' ? 'junction' : 'dir');
@@ -79,10 +79,10 @@ test('source links cannot escape the repository read boundary', async (t) => {
 test('tracked vault content blocks initialization rather than merely emitting a warning', async (t) => {
   if (spawnSync('git', ['--version'], { stdio: 'ignore' }).status !== 0) return t.skip('Git is not available.');
   const root = await fixture(t, 'security');
-  await mkdir(path.join(root, 'doc-vault'));
-  await writeFile(path.join(root, 'doc-vault', 'tracked.md'), '# Already tracked\n');
+  await mkdir(path.join(root, 'edw-doc'));
+  await writeFile(path.join(root, 'edw-doc', 'tracked.md'), '# Already tracked\n');
   execFileSync('git', ['init', '--quiet', root], { stdio: 'pipe' });
-  execFileSync('git', ['-C', root, 'add', '--', 'doc-vault/tracked.md'], { stdio: 'pipe' });
+  execFileSync('git', ['-C', root, 'add', '--', 'edw-doc/tracked.md'], { stdio: 'pipe' });
   const before = await hashes(root);
   await assert.rejects(async () => {
     const engine = await createEngine(root);
@@ -93,12 +93,12 @@ test('tracked vault content blocks initialization rather than merely emitting a 
 
 test('refresh cannot write through an output subtree redirected after initialization', async (t) => {
   const root = await fixture(t, 'security');
-  const outside = await temporaryDirectory(t, 'doc-vault-output-target-');
+  const outside = await temporaryDirectory(t, 'edw-doc-output-target-');
   const engine = await createEngine(root);
   await engine.scan();
   await writeFile(path.join(outside, 'marker.md'), '# Keep\n');
-  const outputDirectory = path.resolve(root, 'doc-vault', 'flows');
-  const savedDirectory = path.resolve(root, 'doc-vault', 'flows.original');
+  const outputDirectory = path.resolve(root, 'edw-doc', 'flows');
+  const savedDirectory = path.resolve(root, 'edw-doc', 'flows.original');
   assert.ok(outputDirectory.startsWith(path.resolve(root) + path.sep));
   assert.ok(savedDirectory.startsWith(path.resolve(root) + path.sep));
   try {
@@ -126,7 +126,7 @@ test('refresh cannot write through an output subtree redirected after initializa
 test('linked Git worktrees keep Git metadata out of source notes and leave it unchanged', async (t) => {
   if (spawnSync('git', ['--version'], { stdio: 'ignore' }).status !== 0) return t.skip('Git is not available.');
   const main = await fixture(t, 'security');
-  const worktree = await temporaryDirectory(t, 'doc-vault-worktree-');
+  const worktree = await temporaryDirectory(t, 'edw-doc-worktree-');
   const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('GIT_')));
   const git = (...args) => execFileSync('git', [
     '-c', `core.hooksPath=${path.join(main, 'no-hooks')}`,

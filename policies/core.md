@@ -4,7 +4,7 @@
 
 Use only the Doc Vault MCP broker exposed by this plugin. No native filesystem, shell, browser, Git mutation, cloud SDK, or arbitrary execution is part of the analysis workflow. If broker tools are unavailable, report that setup failure; do not substitute unrestricted tools.
 
-The permitted repository writes are managed output inside the default `doc-vault/` folder and the broker's narrowly controlled root `.gitignore` addition for that folder. Do not modify source, tests, build files, credentials, Git configuration, Git hooks, or other ignored folders. A reference outside the approved repository is an unresolved external boundary, not authorization to read it.
+The permitted repository writes are managed output inside the default `edw-doc/` folder and the broker's narrowly controlled root `.gitignore` creation or append for the configured vault and root `.claude/` folder. The default rules are `/edw-doc/` and `/.claude/`. The broker preserves existing ignore content. It reports already tracked `.claude` files without changing tracking. Do not modify source, tests, build files, credentials, `.claude` settings, Git configuration, Git hooks, or other ignored folders. A reference outside the approved repository is an unresolved external boundary, not authorization to read it.
 
 Tool restrictions apply to these plugin agents. They do not sandbox an unrelated main session or replace host and operating-system access controls. Do not describe instructions as an OS security boundary.
 
@@ -31,3 +31,5 @@ Do not loop indefinitely when checks fail. Inspect the reason, make at most two 
 ## Communication
 
 Report source coverage separately from model enrichment and review coverage. Explain stale or unresolved areas plainly. Improvement findings are advisory; this workflow never applies suggested code changes. Distinguish a declared standard from a pattern seen in existing code. Do not invent repository-specific governance requirements.
+
+Standards coverage is a separate measure. The specialist registers cited declared requirements or observed conventions and records qualified per-file assessments. Bundled guidance remains advisory. Only an explicit applicable declared requirement can support `noncompliant`; uninspected or conflicting evidence cannot become `complies`. The runtime owns canonical tables, wiki links, source/rule revisions, and stale-state handling. An agent verdict is not a linter run, runtime test, human approval, or compliance certification.

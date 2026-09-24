@@ -10,6 +10,8 @@ For each important claim:
 4. Check that inferred relationships and operational unknowns are labeled.
 5. Record the actual inspected scope and gaps.
 
+For test notes, compare the stated verification with actual assertions and any helper/mocked behavior. For a process note, inspect an alternate or failing branch as well as the happy path. For a standards result, read `vault_standards`, confirm authority and applicability, inspect current rule/source evidence, and check legitimate exceptions. An advisory recommendation cannot establish noncompliance; code/configuration cannot establish that an external check ran. State why a consequence follows, and distinguish demonstrated behavior from plausible risk.
+
 Use `vault_review` with `note_path`, `expected_note_sha256`, `verdict`, `reason`, and current `evidence` locators. Verdict meanings:
 
 - `supported`: the inspected substantive claims are supported within the stated scope; this is an agent evidence review.

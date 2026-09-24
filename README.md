@@ -6,11 +6,12 @@ Use it for onboarding, locating implementation details, understanding tests and 
 
 ## What happens when you build
 
-1. The local broker inventories the repository and creates `doc-vault/`.
-2. It appends `/doc-vault/` to the root `.gitignore` if missing or followed by a rule that could re-include the vault.
+1. The local broker inventories the repository and creates `edw-doc/` by default.
+2. It creates or appends the root `.gitignore` to ensure `/edw-doc/` and `/.claude/` are ignored, preserving existing content. Already tracked `.claude` files are reported; their tracking is unchanged.
 3. It generates source maps, baseline file notes, and an initial onboarding guide.
-4. The curator inspects source evidence, recognizes component capabilities, and enriches explanations and flows.
+4. The curator inspects source evidence and explains meaningful files, folders, tests, and flows in plain language: steps, decisions, helpers, inputs, outputs, checks, failures, and supported improvement opportunities.
 5. Mechanical checks report broken references and invalid evidence. A separate review command can check published claims against original source.
+6. The dedicated standards skill catalogs evidenced requirements and conventions, assesses applicable files, and connects file notes to standards pages in both directions. Initial rules start as unassessed candidates.
 
 The source repository remains read-only apart from that controlled `.gitignore` addition. Generated content lives in the ignored vault. Read [the permission boundary](docs/security.md) for what the broker enforces and what still depends on the host.
 
@@ -28,6 +29,7 @@ Then run:
 
 ```text
 /doc-vault:build
+/doc-vault:standards
 /doc-vault:status
 /doc-vault:ask Where are inputs validated, and how are failures reported?
 /doc-vault:onboard Explain the main execution path for a new engineer.
@@ -47,8 +49,9 @@ The broker uses `DOC_VAULT_ROOT` when explicitly set; otherwise it resolves the 
 | `/doc-vault:ask` | Answer a repository question from current evidence; no writes by default. |
 | `/doc-vault:status` | Report freshness and coverage without changing files. |
 | `/doc-vault:review` | Check published claims in a separate agent context and record qualified verdicts. |
+| `/doc-vault:standards` | Discover standards and record evidence-backed per-file assessments with wiki links and coverage. |
 
-The main workflow runs sequentially inside a forked curator. It does not require nested subagents. A read-only worker definition is included for hosts that can dispatch bounded analysis tasks.
+The main workflow runs sequentially inside a forked curator. It does not require nested subagents. The standards specialist and reviewer run in separate skill contexts, with narrowly scoped write operations. A read-only worker definition is included for hosts that can dispatch bounded analysis tasks.
 
 ## Static utilities
 
@@ -71,7 +74,7 @@ Doc Vault distinguishes repository purpose, component capabilities, and implemen
 - **E2E automation:** runner → fixtures → test → application boundary → assertion → reporting.
 - **Data controls:** metadata → loader → rule dispatch → dataset selection → check → result handling.
 - **General code and configuration:** entry points, responsibilities, declared dependencies, decisions, and external boundaries.
-- **Practices:** supplied standards, observed conventions, and carefully qualified improvement suggestions.
+- **Practices:** declared repository standards, observed conventions, maintained advisory guidance, and carefully qualified improvement suggestions.
 
 Static relationships are candidates for model inspection. A filename or import does not establish an entire business process. See [analysis and support limits](docs/analysis.md).
 
@@ -79,9 +82,21 @@ Static relationships are candidates for model inspection. A filename or import d
 
 Meaningful supported non-Markdown sources receive managed file notes. Markdown is supporting reference material, without a duplicate file note. Coverage reports identify excluded and unsupported sources.
 
-Notes use Markdown and vault-local wiki links for navigation in Obsidian or another compatible viewer. Open `doc-vault/` as the vault. The broker owns note identifiers, timestamps, source hashes, generated links, and review records. Keep personal notes in `doc-vault/annotations/`; the publisher stops when it detects edits to a managed note so you can preserve those edits separately. See [the vault layout](docs/vault-layout.md).
+Notes use Markdown and vault-local wiki links for navigation in Obsidian or another compatible viewer. Open `edw-doc/` as the vault. The broker owns note identifiers, timestamps, source hashes, generated links, and review records. Keep personal notes in `edw-doc/annotations/`; the publisher stops when it detects edits to a managed note so you can preserve those edits separately. See [the vault layout](docs/vault-layout.md).
+
+File notes include a standards section. Results distinguish complies, diverges, noncompliant, unknown, not applicable, not assessed, and stale. Only a demonstrated violation of a declared requirement can be noncompliant; bundled recommendations remain advisory. These are static source assessments, not executed checks or certification. See [standards and assessment](docs/standards.md).
 
 The ignored vault is local. Pulling or pushing source does not share its contents. Rebuild it on each workstation or define a separate approved sharing process. Cross-repository and remote references remain unresolved boundaries in this version.
+
+## Updating from 0.1.0
+
+Version 0.1.1 changes the default generated folder from `doc-vault/` to `edw-doc/`; the plugin name and `/doc-vault:*` commands stay the same. Existing vaults are not silently moved. To migrate a previous default vault, run this from the plugin checkout:
+
+```sh
+node scripts/cli.mjs migrate --root /absolute/path/to/repository --from doc-vault --to edw-doc
+```
+
+Then start a new plugin session in the target repository and run `/doc-vault:sync`, `/doc-vault:standards`, and `/doc-vault:review` as needed. Migration preserves personal annotations; revised guidance still needs fresh agent analysis. A custom configured vault name remains supported. See [updates and migration](docs/installation.md).
 
 ## What this version does not prove
 
@@ -95,13 +110,13 @@ Excel support is structural: available sheet names, cell addresses/types, and co
 .claude-plugin/      Plugin and marketplace manifests
 .mcp.json            Local broker registration
 hooks/               Read-only session-start freshness notice
-agents/              Curator, read-only worker, separate reviewer
-skills/              User-facing build/sync/audit/onboard/ask/status/review
+agents/              Curator, read-only worker, reviewer, standards specialist
+skills/              Build/sync/audit/onboard/ask/status/review/standards
 policies/            Authority, evidence, and output rules
 workflows/           Progressive analysis and maintenance instructions
-packs/               E2E, data-control, generic, and standards lenses
+packs/               Domain lenses and versioned offline standards guidance
 templates/           File, component, flow, profile, finding, and guide shapes
-schemas/             Publication and review contract references
+schemas/             Note, review, rule, and assessment contracts
 scripts/             Local CLI and MCP entry points
 src/                 Filesystem boundary, inventory, readers, and engine
 tests/               Synthetic behavior and boundary checks
@@ -109,4 +124,4 @@ fixtures/            Synthetic repositories for verification
 docs/                Architecture, operations, and release guidance
 ```
 
-For implementation decisions and acceptance criteria, see [the plan](docs/plan.md). From this checkout, run `node --test` for runtime checks and `npm run check` for package manifests, restricted agent tools, bundled guidance, and documentation links. See [what was verified](docs/validation.md) for the scope and remaining host checks. Before sharing or publishing a distribution, use [the release checklist](docs/public-release-checklist.md).
+For implementation decisions and acceptance criteria, see [the original plan](docs/plan.md), [the 0.1.1 plan](docs/plan-v0.1.1.md), and [the release notes](docs/release-v0.1.1.md). Research covers [repository wiki systems](docs/research/wiki-systems.md) and [standards/review systems](docs/research/standards-systems.md); the [source-analysis exercise](docs/research/evaluation-v0.1.1.md) records results and limits. From this checkout, run `node --test` for runtime checks and `npm run check` for package manifests, restricted agent tools, bundled guidance, and documentation links. See [what was verified](docs/validation.md) for the scope and remaining host checks. Before sharing or publishing a distribution, use [the release checklist](docs/public-release-checklist.md).

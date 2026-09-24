@@ -12,7 +12,7 @@ test('an interrupted publication reports stale status and recovers its managed o
   await engine.scan();
   const before = await sourceNote(engine, 'src/safe.js');
   await writeFile(path.join(root, 'src', 'safe.js'), '\n// New source revision awaiting publication\n', { flag: 'a' });
-  const failDestination = path.join(root, 'doc-vault', before.path);
+  const failDestination = path.join(root, 'edw-doc', before.path);
   // Fault injection stays in a disposable child process. Abrupt termination
   // during a real note write exercises the actual journal and dead-writer lock.
   const crash = `
