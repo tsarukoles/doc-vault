@@ -19,6 +19,8 @@ During ordinary analysis, the source repository remains read-only apart from tha
 
 ## Quickstart
 
+Version 0.1.3 adds one native approval per Doc Vault command and exact tool grants for the rest of that invocation. It requires Claude Code CLI 2.1.199 or later. Reload/update the plugin before using the new broker tools; see [run approval and the host verification checklist](docs/run-approval.md). No global permission bypass or settings changes are needed. The real CLI prompt flow still needs verification in the target environment.
+
 Requirements: Node.js 20 or later, Git for Git repositories, and a Claude Code installation configured for your approved model provider. The local runtime has no npm dependencies.
 
 Keep this plugin checkout separate from the repository you want to document. From the target repository, load it for a session:
@@ -84,7 +86,7 @@ node /absolute/path/to/doc-plugin/scripts/cli.mjs watch --root /absolute/path/to
 
 Without local setup, the plugin's session-start hook remains a read-only freshness notice. With maintenance enabled by setup, session start, new prompts, tool activity, and agent completion can refresh static state. Plan-mode and subagent events are skipped, and repeated tool events are throttled. External edits, pulls, and branch changes are discovered at the next reconciliation event. No Git hooks, Git configuration, or permanent background process are installed.
 
-The finish hook can request one main-agent sync continuation per pending snapshot; it does not guarantee completed AI analysis. Standards assessments and independent review remain separate commands. When Claude Code is closed, session hooks do not run. See [maintenance boundaries](docs/architecture.md#maintenance).
+The finish hook shows one nonblocking sync reminder per pending snapshot. It never forces the coding session to continue or starts a model sweep. Standards assessments and independent review remain separate commands. When Claude Code is closed, session hooks do not run. See [maintenance boundaries](docs/architecture.md#maintenance).
 
 ## How analysis adapts
 
@@ -111,7 +113,7 @@ The ignored vault is local. Pulling or pushing source does not share its content
 
 ## Updating
 
-Version 0.1.2 adds optional local setup, event-driven maintenance, and shared writing guidance. After updating, restart the plugin session and run sync to apply revised analysis guidance. Run `setup` again only for repositories where you want the local integration; it preserves configuration and user edits. Plugin distribution updates do not by themselves complete fresh AI analysis. See [the 0.1.2 release notes](docs/release-v0.1.2.md).
+Version 0.1.3 adds scoped run approval and exact per-command tool grants; it retains the optional local setup, static maintenance, and shared writing guidance from 0.1.2. After updating, restart the plugin session and run sync to apply revised analysis guidance. Run `setup` again only for repositories where you want the local integration; it preserves configuration and user edits. Plugin distribution updates do not by themselves complete fresh AI analysis. See [the 0.1.2 release notes](docs/release-v0.1.2.md).
 
 ### Moving a 0.1.0 vault
 

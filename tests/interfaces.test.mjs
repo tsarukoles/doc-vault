@@ -6,9 +6,11 @@ import { fixture, hashes, temporaryDirectory } from './helpers.mjs';
 import { createEngine } from '../src/engine.mjs';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import crypto from 'node:crypto';
+import { mcpClient } from './mcp-client.mjs';
+import { invalidateRuns } from '../src/run-authorization.mjs';
 
 const cli = fileURLToPath(new URL('../scripts/cli.mjs', import.meta.url));
-const mcp = fileURLToPath(new URL('../scripts/mcp.mjs', import.meta.url));
 const sessionStart = fileURLToPath(new URL('../scripts/session-start.mjs', import.meta.url));
 
 function run(script, args, { cwd, input, env = {} }) {
@@ -56,44 +58,28 @@ test('CLI rejects unknown options without initializing the target', async (t) =>
 test('MCP stdio negotiates, exposes bounded tools, and keeps its repository binding fixed', async (t) => {
   const root = await fixture(t, 'security');
   const unrelated = await temporaryDirectory(t, 'doc-vault-mcp-cwd-');
-  const before = await hashes(root);
-  const request = (id, method, params) => ({ jsonrpc: '2.0', id, method, ...(params ? { params } : {}) });
-  const messages = [
-    request(1, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'fixture-client', version: '1.0.0' } }),
-    { jsonrpc: '2.0', method: 'notifications/initialized' },
-    request(2, 'tools/list'),
-    request(3, 'tools/call', { name: 'vault_status', arguments: {} }),
-    request(4, 'tools/call', { name: 'vault_scan', arguments: {} }),
-    request(5, 'tools/call', { name: 'vault_read', arguments: { path: 'src/safe.js', start_line: 1, end_line: 4 } }),
-    request(6, 'tools/call', { name: 'vault_scan', arguments: { root: unrelated } }),
-    request(7, 'tools/call', { name: 'vault_read', arguments: { path: '../outside.js' } }),
-    request(8, 'ping'),
-    request(9, 'unsupported/method'),
-    request(10, 'tools/call', { name: 'vault_standards', arguments: { path: 'src/safe.js' } }),
-    request(11, 'tools/call', { name: 'vault_assess', arguments: { path: 'src/safe.js', expected_source_sha256: '0'.repeat(64), assessments: [] } }),
-  ];
-  const result = run(mcp, [], {
-    cwd: unrelated,
-    input: messages.map((message) => JSON.stringify(message)).join('\n') + '\n',
-    env: { DOC_VAULT_ROOT: root, DOC_VAULT_NAME: 'edw-doc', CLAUDE_PROJECT_DIR: unrelated },
-  });
-  assert.equal(result.status, 0, result.stderr);
-  const responses = result.stdout.trim().split(/\r?\n/).map((line) => JSON.parse(line));
-  assert.equal(responses.length, 11, 'Notifications must not receive responses and stdout must contain only JSON-RPC');
-  const byId = new Map(responses.map((response) => [response.id, response]));
-  assert.equal(byId.get(1).result.protocolVersion, '2025-06-18');
-  assert.ok(byId.get(2).result.tools.some((tool) => tool.name === 'vault_publish'));
-  assert.ok(byId.get(2).result.tools.every((tool) => tool.inputSchema.additionalProperties === false));
-  assert.equal(byId.get(3).result.structuredContent.initialized, false);
-  assert.equal(byId.get(4).result.isError, false);
-  assert.match(byId.get(5).result.structuredContent.text, /greeting/);
-  assert.equal(byId.get(6).result.isError, true, 'The model cannot redirect the bound root through tool arguments');
-  assert.equal(byId.get(7).result.isError, true);
-  assert.deepEqual(byId.get(8).result, {});
-  assert.equal(byId.get(9).error.code, -32601);
-  assert.equal(byId.get(10).result.isError, false);
-  assert.ok(byId.get(10).result.structuredContent.rules.every(rule=>rule.assessment.result==='not-assessed'));
-  assert.equal(byId.get(11).result.isError, true, 'Malformed assessments are rejected at the transport boundary');
+  const before = await hashes(root), session_id = crypto.randomUUID();
+  invalidateRuns(root, { hook_event_name: 'UserPromptSubmit', session_id });
+  const client = await mcpClient(t, root, { cwd: path.dirname(unrelated) });
+  assert.equal(client.initialized.result.protocolVersion, '2025-06-18');
+  const tools = (await client.request('tools/list')).result.tools;
+  assert.ok(tools.some(tool => tool.name === 'vault_publish'));
+  assert.ok(tools.every(tool => tool.inputSchema.additionalProperties === false));
+  const begin = await client.call('vault_begin', { command: 'build', session_id });
+  assert.equal(begin.isError, false, begin.content[0].text);
+  const { run_id } = begin.structuredContent;
+  assert.equal((await client.call('vault_status', { run_id })).structuredContent.initialized, false);
+  assert.equal((await client.call('vault_scan', { run_id })).isError, false);
+  assert.match((await client.call('vault_read', { run_id, path: 'src/safe.js', start_line: 1, end_line: 4 })).structuredContent.text, /greeting/);
+  assert.equal((await client.call('vault_scan', { run_id, root: unrelated })).isError, true);
+  assert.equal((await client.call('vault_read', { run_id, path: '../outside.js' })).isError, true);
+  assert.deepEqual((await client.request('ping')).result, {});
+  assert.equal((await client.request('unsupported/method')).error.code, -32601);
+  const standards = await client.call('vault_standards', { run_id, path: 'src/safe.js' });
+  assert.equal(standards.isError, false);
+  assert.ok(standards.structuredContent.rules.every(rule => rule.assessment.result === 'not-assessed'));
+  assert.equal((await client.call('vault_assess', { run_id, path: 'src/safe.js', expected_source_sha256: '0'.repeat(64), assessments: [] })).isError, true);
+  await client.call('vault_end', { run_id });
   assert.deepEqual(await hashes(unrelated), {});
   assert.deepEqual(await hashes(root, { exclude: ['.gitignore', 'edw-doc'] }), before);
 });

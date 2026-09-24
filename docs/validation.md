@@ -1,8 +1,10 @@
 # Validation record
 
-This record describes development verification through version 0.1.2. It is not a production certification.
+This record describes development verification through version 0.1.3. It is not a production certification.
 
 ## Local verification
+
+The 0.1.3 full-suite run passed **118 tests, no failures or skips**, and the package check passed. It adds protocol and runtime checks for command-scoped approval, repeated batches, source preservation, revoked and expired grants, host-version compatibility, cancellation, compaction, and command-agent versus helper completion. The package check verifies exact skill grants and lifecycle hooks. Tests dispatch the approval tool directly; they do not verify a native permission dialog. The generic Codex skill validator could not run because PyYAML was unavailable; the repository's Claude-specific package checker validates all eight skills.
 
 The 0.1.2 full-suite run passed **110 tests, no failures or skips**. After the final instruction-parser refinement, all **24 setup regression tests** passed, including the added unclosed-fence/comment case. These checks exercise source-write boundaries, narrow ignore updates, path traversal, redirected output paths, Git worktrees, tracking checks, file maps, source fingerprints, additions/deletions/renames, dependency invalidation, evidence locators, exact-note review, publication recovery, and preservation of annotations.
 
@@ -35,6 +37,6 @@ This checks the workflow and runtime contract. It does not establish that an arb
 
 ## Still to verify in the intended host
 
-Claude Code was unavailable in the development environment. Real plugin loading, MCP registration, forked-agent tool restrictions, marketplace installation and updates, instruction activation, actual hook dispatch/Stop continuation, and the approved model/provider path need an integration smoke test. Hook protocol tests simulate host events through the command entry points; they do not establish real host behavior. Bedrock requests were not made.
+Claude Code was unavailable in the development environment. Real plugin loading, MCP registration, forked-agent tool restrictions and inherited skill grants, marketplace installation and updates, instruction activation, actual hook dispatch/Stop reminders, native permission prompt counts, and the approved model/provider path need an integration smoke test. Hook protocol tests simulate host events through the command entry points; they do not establish real host behavior. Bedrock requests were not made. Follow the [run approval checklist](run-approval.md#update-and-verify) in the target CLI.
 
 Use the [host pilot in the plan](plan.md) and the [installation checks](installation.md). Before public distribution, complete the [release checklist](public-release-checklist.md), including license selection.

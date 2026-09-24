@@ -2,6 +2,8 @@
 
 ## Broker behavior
 
+MCP calls now require a command-scoped run ID from an explicitly approved `vault_begin`. The broker checks the ID on each call and revokes it on end or lifecycle invalidation; skill `allowed-tools` grants cover only the named operations. Ephemeral lifecycle markers live in the user's temporary directory and contain no source data or authorization tokens. See [run approval](run-approval.md), including host requirements and the distinction between broker checks and host/OS isolation.
+
 The plugin agents use a local MCP broker with named operations for inventory, approved source reads, evidence packets, managed publication, status, lint, and review records. There is no general-purpose file-write, shell, browser, Git mutation, or cloud-execution operation.
 
 The intended write boundary is the configured vault, `edw-doc/` by default, with one explicit exception: the broker can create or append the root `.gitignore` for the exact configured vault rule and `/.claude/`. It preserves existing content and checks whether later negation prevents exclusion. A missing `.gitignore` is created. Already tracked `.claude` files are reported without changing their tracking; ignored paths already in Git remain tracked. The broker does not write `.claude` settings, install Git hooks, modify Git configuration, or patch repository source. If Git metadata exists but tracking or ignore rules cannot be inspected, generation stops.
@@ -20,7 +22,7 @@ The installer records hashes for owned files and exact content for owned blocks.
 
 Packaged hooks can statically refresh an existing owned vault only after local setup enables maintenance. Without setup, session start retains a read-only status notice. Hooks never initialize a missing vault or run repository code. Their writes use the existing broker boundary plus maintenance bookkeeping inside the vault; they do not grant setup access to the analysis agents.
 
-Plan-mode and subagent events skip maintenance writes. `PostToolUse` skips Doc Vault broker calls and throttles repeated checks. A main-agent `Stop` event can request one sync continuation per pending snapshot, guarded against recursive continuation. Failures leave work pending without indefinitely blocking normal work. Hook processes run under the host's permissions, so the checks do not replace host sandboxing. There is no permanent background AI worker, and instruction loading or a hook request does not prove completed AI analysis.
+Plan-mode and subagent events skip maintenance writes. `PostToolUse` skips Doc Vault broker calls and throttles repeated checks. A main-agent `Stop` event can show one nonblocking reminder per pending snapshot. It does not force a sync continuation. Failures leave work pending without indefinitely blocking normal work. Hook processes run under the host's permissions, so the checks do not replace host sandboxing. There is no permanent background AI worker, and instruction loading or a hook request does not prove completed AI analysis.
 
 ## Agent permissions are scoped
 

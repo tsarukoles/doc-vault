@@ -2,7 +2,7 @@
 
 ## Local development or evaluation
 
-Use Node.js 20 or later and Git when documenting a Git repository. There is no dependency installation step for the local runtime. Configure the host's approved model/provider independently; Doc Vault does not create credentials or make direct model-provider calls.
+Use Node.js 20 or later, Claude Code CLI 2.1.199 or later, and Git when documenting a Git repository. Version 0.1.3 requires the CLI's mandatory tool approval support; see [run approval](run-approval.md). There is no dependency installation step for the local runtime. Configure the host's approved model/provider independently; Doc Vault does not create credentials or make direct model-provider calls.
 
 From the repository to document:
 
@@ -49,7 +49,7 @@ After setup, load the plugin and run `/doc-vault:build` if needed. Hooks refresh
 
 With local maintenance enabled, `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `Stop` can reconcile source state. Plan-mode events and subagent events do not write. Broker tool calls are skipped by `PostToolUse`; other tool events are throttled to avoid repeated scans within two seconds. Source changes made outside Claude, including pulls or branch switches, are caught at the next supported event, not immediately while idle.
 
-Static refresh updates maps and invalidates affected explanations. The finish hook may request one main-agent `/doc-vault:sync` continuation for pending work on a snapshot. It records that request before continuing and guards repeated stop events; failure or incomplete analysis stays visible without an automatic retry loop. This does not guarantee AI completion. Run `/doc-vault:standards` and `/doc-vault:review` separately when those results need updating.
+Static refresh updates maps and invalidates affected explanations. The finish hook displays one nonblocking `/doc-vault:sync` reminder for pending work on a snapshot. It records the notice to suppress repeated stop reminders. It does not start a model run, force completion, or prevent the coding task from ending. Run `/doc-vault:standards` and `/doc-vault:review` separately when those results need updating.
 
 There is no always-on AI worker, auto-started watcher, or installed Git hook. Session hooks do not run when Claude Code is closed. The existing optional CLI `watch` command performs static refresh only while its process runs.
 

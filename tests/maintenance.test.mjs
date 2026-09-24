@@ -8,11 +8,13 @@ import { fixture, hashes } from './helpers.mjs';
 import { createEngine } from '../src/engine.mjs';
 import { installIntegration, removeIntegration } from '../src/integration.mjs';
 import { maintain } from '../src/maintenance.mjs';
+import crypto from 'node:crypto';
+import { mcpClient } from './mcp-client.mjs';
+import { invalidateRuns } from '../src/run-authorization.mjs';
 
 const cli = fileURLToPath(new URL('../scripts/cli.mjs', import.meta.url));
 const hook = fileURLToPath(new URL('../scripts/maintenance-hook.mjs', import.meta.url));
 const start = fileURLToPath(new URL('../scripts/session-start.mjs', import.meta.url));
-const mcp = fileURLToPath(new URL('../scripts/mcp.mjs', import.meta.url));
 async function configured(t, vaultName = 'edw-doc') {
   const root = await fixture(t, 'security');
   execFileSync('git', ['init', '-q', root], { windowsHide: true });
@@ -66,19 +68,21 @@ test('session reconciliation detects external add/edit/delete/rename and preserv
   assert.equal(fs.readFileSync(path.join(vault, 'annotations/owner.md'), 'utf8'), 'Preserve my notes.\n');
 });
 
-test('one Stop continuation per snapshot, including new files already refreshed by another watcher', async t => {
+test('one Stop reminder per snapshot, including new files already refreshed by another watcher', async t => {
   const { root, engine } = await configured(t);
   const event = { hook_event_name: 'Stop', stop_hook_active: false };
-  assert.equal((await maintain(root, event)).requestSync, true);
-  assert.equal((await maintain(root, event)).requestSync, false);
-  assert.match((await maintain(root, { hook_event_name: 'UserPromptSubmit' })).message, /already received/);
+  assert.equal((await maintain(root, event)).notifySync, true);
+  assert.equal((await maintain(root, event)).notifySync, false);
+  const nextPrompt = await maintain(root, { hook_event_name: 'UserPromptSubmit' });
+  assert.equal(nextPrompt.pending, true);
+  assert.equal(nextPrompt.notifySync, false);
   fs.writeFileSync(path.join(root, 'src/added.js'), 'export const addition = true;\n');
   await engine.refresh();
   const second = await maintain(root, event);
   assert.equal(second.refreshed, false);
-  assert.equal(second.requestSync, true);
-  assert.equal((await maintain(root, { ...event, stop_hook_active: true })).requestSync, false);
-  assert.equal((await maintain(root, event)).requestSync, false);
+  assert.equal(second.notifySync, true);
+  assert.equal((await maintain(root, { ...event, stop_hook_active: true })).notifySync, false);
+  assert.equal((await maintain(root, event)).notifySync, false);
 });
 
 test('an existing custom main agent still receives maintenance', async t => {
@@ -86,13 +90,13 @@ test('an existing custom main agent still receives maintenance', async t => {
   fs.appendFileSync(path.join(root, 'src/safe.js'), '\n// custom main-agent edit\n');
   const result = await maintain(root, { hook_event_name: 'Stop', agent_type: 'custom-coding-agent' });
   assert.equal(result.refreshed, true);
-  assert.equal(result.requestSync, true);
+  assert.equal(result.notifySync, true);
   assert.equal((await engine.status()).fresh, true);
 });
 
 test('completed file analysis clears the computed backlog instead of retrying on a receipt', async t => {
   const { root, engine } = await configured(t);
-  assert.equal((await maintain(root, { hook_event_name: 'Stop' })).requestSync, true);
+  assert.equal((await maintain(root, { hook_event_name: 'Stop' })).notifySync, true);
   for (const record of (await engine.list({ kind: 'included' })).items) {
     const source = await engine.read({ path: record.path, start_line: 1, end_line: 1 });
     await engine.publish({ kind: 'file', title: record.path, slug: record.path,
@@ -102,7 +106,7 @@ test('completed file analysis clears the computed backlog instead of retrying on
   }
   const completed = await maintain(root, { hook_event_name: 'Stop', stop_hook_active: true });
   assert.equal(completed.pending, false);
-  assert.equal(completed.requestSync, false);
+  assert.equal(completed.notifySync, false);
   assert.equal(completed.pendingFiles, 0);
 });
 
@@ -126,13 +130,13 @@ test('plan mode, plugin subagents, broker tools, and disabled maintenance never 
   assert.deepEqual(await hashes(root), disabled);
 });
 
-test('overlapping checkpoints publish one continuation and leave no live controller lock', async t => {
+test('overlapping checkpoints publish one reminder and leave no live controller lock', async t => {
   const { root, vault } = await configured(t);
   const results = await Promise.all([
     maintain(root, { hook_event_name: 'Stop' }),
     maintain(root, { hook_event_name: 'Stop' }),
   ]);
-  assert.equal(results.filter(result => result.requestSync).length, 1);
+  assert.equal(results.filter(result => result.notifySync).length, 1);
   assert.equal(results.filter(result => result.busy).length, 1);
   assert.equal(fs.existsSync(path.join(vault, '.system/maintenance-lock.json')), false);
 });
@@ -160,8 +164,9 @@ test('CLI setup/status/uninstall and custom vault configuration work without hos
   const begun = JSON.parse(run(start, root, [], { cwd: root, hook_event_name: 'SessionStart' }).stdout);
   assert.equal(begun.hookSpecificOutput.hookEventName, 'SessionStart');
   const stopped = JSON.parse(run(hook, root, [], { cwd: root, hook_event_name: 'Stop' }).stdout);
-  assert.equal(stopped.decision, 'block');
-  assert.equal(JSON.parse(run(hook, root, [], { cwd: root, hook_event_name: 'Stop', stop_hook_active: true }).stdout).decision, undefined);
+  assert.equal(stopped.decision, undefined);
+  assert.match(stopped.systemMessage, /sync/);
+  assert.equal(run(hook, root, [], { cwd: root, hook_event_name: 'Stop', stop_hook_active: true }).stdout, '');
   assert.equal(JSON.parse(run(cli, root, ['uninstall', '--root', root]).stdout).installed, false);
   const before = await hashes(root);
   assert.equal(run(hook, root, [], { cwd: root, hook_event_name: 'Stop' }).stdout, '');
@@ -170,15 +175,14 @@ test('CLI setup/status/uninstall and custom vault configuration work without hos
 
 test('MCP follows setup vault selection without exposing integration write operations', async t => {
   const { root } = await configured(t, 'custom-doc');
-  const input = [
-    { jsonrpc: '2.0', id: 1, method: 'tools/list' },
-    { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'vault_status', arguments: {} } },
-  ].map(value => JSON.stringify(value)).join('\n') + '\n';
-  const result = spawnSync(process.execPath, [mcp], { cwd: root, env: { ...process.env, DOC_VAULT_ROOT: root, DOC_VAULT_NAME: '' }, input, encoding: 'utf8', timeout: 15000, windowsHide: true });
-  assert.equal(result.status, 0, result.stderr);
-  const [tools, status] = result.stdout.trim().split('\n').map(line => JSON.parse(line));
-  assert.ok(tools.result.tools.every(tool => !/setup|uninstall|integration/.test(tool.name)));
-  assert.equal(status.result.structuredContent.vault, 'custom-doc');
+  const session_id = crypto.randomUUID();
+  invalidateRuns(root, { hook_event_name: 'UserPromptSubmit', session_id });
+  const client = await mcpClient(t, root, { vaultName: '' });
+  const tools = (await client.request('tools/list')).result.tools;
+  assert.ok(tools.every(tool => !/setup|uninstall|integration/.test(tool.name)));
+  const begin = await client.call('vault_begin', { command: 'status', session_id });
+  const status = await client.call('vault_status', { run_id: begin.structuredContent.run_id });
+  assert.equal(status.structuredContent.vault, 'custom-doc');
 });
 
 test('uninstall preserves edited config but disables maintenance', async t => {

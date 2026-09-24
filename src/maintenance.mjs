@@ -15,7 +15,7 @@ function receipt(vault) {
   if (!fs.existsSync(checkedPath(vault, RECEIPT, { allowMissing: true, write: true }))) return {};
   const value = JSON.parse(readBytes(vault, RECEIPT, 16384).toString('utf8'));
   if (value.product !== 'doc-vault-maintenance' || value.version !== 1) throw new Error('Unrecognized maintenance state; preserved for inspection.');
-  for (const key of ['snapshot', 'requested_snapshot']) {
+  for (const key of ['snapshot', 'notified_snapshot']) {
     if (value[key] !== null && value[key] !== undefined && !/^s_[a-f0-9]{20}$/.test(value[key])) throw new Error('Invalid maintenance snapshot.');
   }
   return value;
@@ -65,22 +65,21 @@ export async function maintain(rootInput, event = {}, { vaultName } = {}) {
     const pendingFiles = inventory.records.filter(record => record.status === 'included' && !inventory.enrichments[notePath(record.path)]).length;
     const pending = invalidated > 0 || pendingFiles > 0;
     const state = { product: 'doc-vault-maintenance', version: 1, snapshot, pending,
-      requested_snapshot: previous.requested_snapshot || null, checked_at_ms: Date.now() };
-    let requestSync = false;
-    if (name === 'Stop' && !event.stop_hook_active && pending && state.requested_snapshot !== snapshot) {
-      requestSync = true;
-      // Persist before requesting continuation so interruptions cannot create a loop.
-      state.requested_snapshot = snapshot;
+      notified_snapshot: previous.notified_snapshot || null, checked_at_ms: Date.now() };
+    let notifySync = false;
+    if (name === 'Stop' && !event.stop_hook_active && pending && state.notified_snapshot !== snapshot) {
+      notifySync = true;
+      // Persist before the reminder so repeated stop events do not nag the developer.
+      state.notified_snapshot = snapshot;
     }
-    // A request is not a completion marker. Recompute coverage from the actual
+    // A reminder is not a completion marker. Recompute coverage from the actual
     // broker state at the next event, rather than trusting the agent's response.
     writeAtomic(vault, RECEIPT, JSON.stringify(state, null, 2) + '\n');
-    return { refreshed: changed, pending, pendingFiles, invalidated, snapshot, requestSync, vaultName,
+    return { refreshed: changed, pending, pendingFiles, invalidated, snapshot, notifySync, vaultName,
       message: pending
-        ? state.requested_snapshot === snapshot
-          ? `Doc Vault snapshot ${snapshot} already received its automatic sync opportunity. Some analysis is still incomplete; report remaining coverage. Further sync requires a manual request, not another automatic retry.`
-          : `Doc Vault static snapshot ${snapshot} is refreshed. AI explanations, flows, onboarding, and standards may still need work. The finish checkpoint will request /doc-vault:sync once; do not start a separate maintenance loop.`
+        ? 'Doc Vault has pending documentation work. When convenient, run /doc-vault:sync in Claude Code. Do not interrupt ordinary coding or start a sweep automatically.'
         : 'Doc Vault source inventory is current. Static freshness does not establish completed AI analysis or independent review.' };
+
   } finally {
     if (fs.existsSync(checkedPath(vault, LOCK, { allowMissing: true, write: true }))) {
       const held = JSON.parse(readBytes(vault, LOCK, 8192).toString('utf8'));

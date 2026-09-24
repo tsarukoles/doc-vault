@@ -2,6 +2,8 @@
 
 MCP server name: `vault`. In this plugin's Claude Code agents, tools are named `mcp__plugin_doc-vault_vault__<operation>`.
 
+Every operation below requires an additional `run_id` returned by `vault_begin`. Start once with `{command, session_id}` (the host-expanded `${CLAUDE_SESSION_ID}`), reuse the token across batches, and call `vault_end({run_id})` before returning. `vault_begin` requires explicit native approval and does not read repository content or create the vault. The broker rejects missing, closed, revoked, or out-of-command grants before engine dispatch. See [run approval](run-approval.md) for supported hosts and permission scope. Operator CLI calls do not use this MCP handshake.
+
 | Operation | Input | Purpose |
 |---|---|---|
 | `vault_scan` | none | Initialize the configured vault and `.claude` ignore rules, inventory, static snapshots, maps, baseline notes, and standards candidates. |

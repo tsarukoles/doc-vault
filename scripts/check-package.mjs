@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { COMMAND_TOOLS } from '../src/run-authorization.mjs';
 
 // Inspect only this distribution's authored assets. Generated vaults, target
 // repositories, fixtures, and links supplied by repository content are not inputs.
@@ -12,15 +13,16 @@ const SKILLS = ['build', 'sync', 'audit', 'onboard', 'ask', 'status', 'review', 
 const PREFIX = 'mcp__plugin_doc-vault_vault__';
 const READ_TOOLS = ['vault_status', 'vault_list', 'vault_read', 'vault_search', 'vault_context', 'vault_packet', 'vault_note', 'vault_standards'];
 const AGENT_TOOLS = {
-  curator: [...READ_TOOLS, 'vault_scan', 'vault_publish', 'vault_lint', 'vault_refresh'],
+  curator: [...READ_TOOLS, 'vault_scan', 'vault_publish', 'vault_lint', 'vault_refresh', 'vault_begin', 'vault_end'],
   worker: READ_TOOLS,
-  reviewer: [...READ_TOOLS, 'vault_review'],
-  standards: [...READ_TOOLS, 'vault_rule', 'vault_assess'],
+  reviewer: [...READ_TOOLS, 'vault_review', 'vault_begin', 'vault_end'],
+  standards: [...READ_TOOLS, 'vault_rule', 'vault_assess', 'vault_begin', 'vault_end'],
 };
 const REQUIRED = [
   'package.json', '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', '.mcp.json',
   'hooks/hooks.json', 'README.md', 'scripts/cli.mjs', 'scripts/mcp.mjs', 'scripts/session-start.mjs',
   'scripts/maintenance-hook.mjs', 'src/integration.mjs', 'src/maintenance.mjs', 'policies/documentation-style.md', 'docs/business-overview.md',
+  'scripts/run-lifecycle.mjs', 'src/run-authorization.mjs', 'docs/run-approval.md',
   'scripts/check-package.mjs', 'src/engine.mjs', 'src/security.mjs', 'src/inventory.mjs',
   'src/analyze.mjs', 'src/readers.mjs', 'src/render.mjs', 'policies/core.md',
   ...Object.keys(AGENT_TOOLS).map(name => `agents/${name}.md`),
@@ -182,17 +184,21 @@ export function checkPackage(root = PACKAGE_ROOT) {
     }
   }
   if (hooks) {
-    const expected=['SessionStart','UserPromptSubmit','PostToolUse','Stop'];
-    if (!hooks.hooks || Object.keys(hooks.hooks).length !== expected.length || expected.some(event=>!Array.isArray(hooks.hooks[event]))) fail('Expected only the four documented lifecycle hooks.');
+    const expected=['SessionStart','UserPromptSubmit','PostToolUse','Stop','SubagentStop','SessionEnd'];
+    if (!hooks.hooks || Object.keys(hooks.hooks).length !== expected.length || expected.some(event=>!Array.isArray(hooks.hooks[event]))) fail('Expected only the documented maintenance and authorization lifecycle hooks.');
     else for(const event of expected) {
       const groups = hooks.hooks[event];
-      if (groups.length !== 1 || !Array.isArray(groups[0]?.hooks) || groups[0].hooks.length !== 1) fail(`Expected one ${event} hook command.`);
+      const scripts=event==='SessionStart'?['run-lifecycle','session-start']:['UserPromptSubmit','Stop'].includes(event)?['run-lifecycle','maintenance-hook']:event==='PostToolUse'?['maintenance-hook']:['run-lifecycle'];
+      if (groups.length !== 1 || !Array.isArray(groups[0]?.hooks) || groups[0].hooks.length !== scripts.length) fail(`Unexpected ${event} hook commands.`);
       else {
-        const hook = groups[0].hooks[0];
-        const script=event==='SessionStart'?'session-start':'maintenance-hook';
-        if (hook?.type !== 'command' || hook?.command !== `node "\${CLAUDE_PLUGIN_ROOT}/scripts/${script}.mjs"`) fail(`${event} must invoke only its bundled lifecycle script.`);
-        if (hook?.async || hook?.asyncRewake || groups[0].matcher) fail(`${event} must use the reviewed synchronous checkpoint configuration.`);
-        if (!Number.isFinite(hook?.timeout) || hook.timeout <= 0 || hook.timeout > 30) fail(`${event} requires a bounded timeout of at most 30 seconds.`);
+        for (const [index,script] of scripts.entries()) {
+          const hook = groups[0].hooks[index];
+          if (hook?.type !== 'command' || hook?.command !== `node "\${CLAUDE_PLUGIN_ROOT}/scripts/${script}.mjs"`) fail(`${event} must invoke only its bundled lifecycle scripts.`);
+          if (hook?.async || hook?.asyncRewake) fail(`${event} must use the reviewed synchronous checkpoint configuration.`);
+          if (!Number.isFinite(hook?.timeout) || hook.timeout <= 0 || hook.timeout > (script==='run-lifecycle'?5:30)) fail(`${event} requires a bounded timeout.`);
+        }
+        const matcher=event==='SubagentStop'?'^doc-vault:(curator|standards|reviewer)$':undefined;
+        if (groups[0].matcher!==matcher) fail(`${event} has an unexpected matcher.`);
       }
     }
   }
@@ -233,6 +239,9 @@ export function checkPackage(root = PACKAGE_ROOT) {
     if (!agent || !agents.has(agent)) fail(`${file}: agent must reference a bundled namespaced agent.`);
     const expectedAgent = name === 'review' ? 'reviewer' : name === 'standards' ? 'standards' : 'curator';
     if (SKILLS.includes(name) && agent !== expectedAgent) fail(`${file}: expected ${expectedAgent} agent.`);
+    const expectedGrants=['vault_begin',...(COMMAND_TOOLS[name]||[]),'vault_end'].map(tool=>`${PREFIX}${tool}`);
+    const grants=toolList(metadata['allowed-tools'],file,fail);
+    if (expectedGrants.length!==grants.length || expectedGrants.some(tool=>!grants.includes(tool))) fail(`${file}: allowed-tools must exactly match this command's approval scope.`);
     for (const field of ['tools', 'allowed-tools']) {
       if (metadata[field] === undefined) continue;
       for (const tool of toolList(metadata[field], file, fail)) {

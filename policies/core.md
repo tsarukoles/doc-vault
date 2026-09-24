@@ -2,6 +2,8 @@
 
 ## Authority and tools
 
+The invoking skill must obtain one native approval through `vault_begin` before using broker operations. Reuse its `run_id` for all permitted work in that invocation, then call `vault_end` before the final response, including partial/failure results. Never persist the token in generated notes, reuse it for a later command, retry a declined approval, or widen the approved command. See `docs/run-approval.md`. Optional workers receive an existing run ID and cannot extend its scope. An ordinary coding session must not be prolonged to force a documentation run.
+
 Use only the Doc Vault MCP broker exposed by this plugin. No native filesystem, shell, browser, Git mutation, cloud SDK, or arbitrary execution is part of the analysis workflow. If broker tools are unavailable, report that setup failure; do not substitute unrestricted tools.
 
 The permitted repository writes are managed output inside the default `edw-doc/` folder and the broker's narrowly controlled root `.gitignore` creation or append for the configured vault and root `.claude/` folder. The default rules are `/edw-doc/` and `/.claude/`. The broker preserves existing ignore content. It reports already tracked `.claude` files without changing tracking. Do not modify source, tests, build files, credentials, `.claude` settings, Git configuration, Git hooks, or other ignored folders. A reference outside the approved repository is an unresolved external boundary, not authorization to read it.

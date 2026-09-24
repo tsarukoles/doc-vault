@@ -13,9 +13,9 @@ try {
   if (!result.skipped) {
     let output;
     if (event.hook_event_name === 'Stop') {
-      output = result.requestSync
-        ? { decision: 'block', reason: 'Doc Vault maintenance: run /doc-vault:sync once for this changed source snapshot using the installed broker tools. Include new files and affected flows/onboarding. If unavailable, interrupted, or unable to finish, report the remaining work and finish; do not retry or widen permissions. Standards assessment and independent review remain separate.' }
-        : result.pending ? { systemMessage: 'Doc Vault may still have incomplete AI analysis. No further automatic continuation will be requested for this snapshot; inspect /doc-vault:status and run /doc-vault:sync manually if needed.' } : null;
+      output = result.notifySync
+        ? { systemMessage: 'Don’t forget to sync Doc Vault. In Claude Code, run /doc-vault:sync when convenient. Documentation maintenance must not interrupt your development work.' }
+        : null;
     } else if (result.pending) {
       output = { hookSpecificOutput: { hookEventName: event.hook_event_name, additionalContext: result.message } };
     }
