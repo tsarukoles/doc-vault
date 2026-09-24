@@ -7,6 +7,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { assertUntrackedVault, ignoreDiagnostics } from '../src/inventory.mjs';
 import { checkedPath, ensureIgnore, readBytes, rootDirectory, validateVaultName } from '../src/security.mjs';
+import { installIntegration, removeIntegration, integrationStatus } from '../src/integration.mjs';
 
 function migrateOwnedVault(rootInput, from, to) {
   const root=rootDirectory(rootInput);
@@ -70,14 +71,22 @@ try {
     options[key.slice(2)]=args.shift();
   }
   if(command==='help'||command==='--help'||command==='-h') {
-    process.stdout.write(`Doc Vault ${VERSION}\n\nUsage: node scripts/cli.mjs <command> --root <repository>\n\nCommands:\n  scan, sync  Create/refresh a source-grounded structural vault\n  status      Report freshness without writing\n  lint        Check managed notes, links, evidence and coverage\n  list        List sources (--kind category, --limit 1..500)\n  read        Inspect approved source (--path relative/source)\n  packet      Get one source analysis packet (--path relative/source)\n  context     Read bundled guidance (--topic index or asset path)\n  watch       Poll and refresh (--interval seconds, minimum 2)\n  migrate     Move an owned vault (--from doc-vault --to edw-doc)\n\nOptional: --vault-name edw-doc\nScan/sync/watch write only the vault and append its root ignore rule plus /.claude/.\nMigration additionally moves the explicitly named owned vault; it never overwrites a destination.\nThey never run project code or install Git hooks. AI enrichment runs through the Claude Code plugin.\n`);
+    process.stdout.write(`Doc Vault ${VERSION}\n\nUsage: node scripts/cli.mjs <command> --root <repository>\n\nCommands:\n  setup       Install local instruction integration (--root required)\n  setup-status Inspect local integration without writing (--root required)\n  uninstall   Remove unchanged integration additions (--root required)\n  scan, sync  Create/refresh a source-grounded structural vault\n  status      Report freshness without writing\n  lint        Check managed notes, links, evidence and coverage\n  list        List sources (--kind category, --limit 1..500)\n  read        Inspect approved source (--path relative/source)\n  packet      Get one source analysis packet (--path relative/source)\n  context     Read bundled guidance (--topic index or asset path)\n  watch       Poll and refresh (--interval seconds, minimum 2)\n  migrate     Move an owned vault (--from doc-vault --to edw-doc)\n\nOptional: --vault-name edw-doc\nScan/sync/watch write only the vault and append its root ignore rule plus /.claude/.\nMigration additionally moves the explicitly named owned vault; it never overwrites a destination.\nThey never run project code or install Git hooks. AI enrichment runs through the Claude Code plugin.\nSetup additionally owns narrow local instruction references and .claude/doc-vault files.\nUninstall preserves user edits, the vault, ignore rules, and directories.\n`);
+  } else if(['setup','setup-status','uninstall'].includes(command)) {
+    if(!options.root)throw new Error('Local integration commands require an explicit --root repository.');
+    if(Object.keys(options).some(key=>!['root','vault-name'].includes(key)))throw new Error('Integration commands accept only --root and setup --vault-name.');
+    if(command!=='setup'&&options['vault-name'])throw new Error('--vault-name is only accepted for setup.');
+    const result=command==='setup'?installIntegration(options.root,{vaultName:options['vault-name']||'edw-doc'}):command==='uninstall'?removeIntegration(options.root):integrationStatus(options.root);
+    process.stdout.write(JSON.stringify(result,null,2)+'\n');
   } else if(command==='migrate') {
     if(!options.root||!options.from||!options.to)throw new Error('Migration requires explicit --root, --from, and --to.');
     if(options['vault-name'])throw new Error('Use --from and --to for migration, not --vault-name.');
     process.stdout.write(JSON.stringify(migrateOwnedVault(options.root,options.from,options.to),null,2)+'\n');
   } else {
     if(options.from||options.to)throw new Error('--from and --to are only accepted for migration.');
-    const engine=await createEngine(options.root||process.cwd(),{vaultName:options['vault-name']||'edw-doc'});
+    const root=options.root||process.cwd();
+    const setup=integrationStatus(root);
+    const engine=await createEngine(root,{vaultName:options['vault-name']||(setup.installed?setup.vaultName:'edw-doc')});
     const output=value=>process.stdout.write(JSON.stringify(value,null,2)+'\n');
     if(command==='watch') {
       const interval=Number(options.interval||10);

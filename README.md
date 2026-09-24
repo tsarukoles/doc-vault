@@ -4,6 +4,8 @@ A local repository knowledge vault for Claude Code. Doc Vault maps supported sou
 
 Use it for onboarding, locating implementation details, understanding tests and data controls, and investigating source-level improvement opportunities. It works through the model and provider already approved for your Claude Code session, including a host configured for Bedrock. It does not require a separate model SDK or API key.
 
+For a nontechnical explanation of capabilities, preservation rules, and scope, start with [the business overview](docs/business-overview.md).
+
 ## What happens when you build
 
 1. The local broker inventories the repository and creates `edw-doc/` by default.
@@ -13,7 +15,7 @@ Use it for onboarding, locating implementation details, understanding tests and 
 5. Mechanical checks report broken references and invalid evidence. A separate review command can check published claims against original source.
 6. The dedicated standards skill catalogs evidenced requirements and conventions, assesses applicable files, and connects file notes to standards pages in both directions. Initial rules start as unassessed candidates.
 
-The source repository remains read-only apart from that controlled `.gitignore` addition. Generated content lives in the ignored vault. Read [the permission boundary](docs/security.md) for what the broker enforces and what still depends on the host.
+During ordinary analysis, the source repository remains read-only apart from that controlled `.gitignore` addition. Optional local setup has a separate, narrow allowance for owned integration files and references; it does not expand the analysis agents' tools. Read [the permission boundary](docs/security.md).
 
 ## Quickstart
 
@@ -37,6 +39,19 @@ Then run:
 ```
 
 The broker uses `DOC_VAULT_ROOT` when explicitly set; otherwise it resolves the active repository root or working directory. Verify the reported root on the first build. See [installation](docs/installation.md) for marketplace distribution and updates.
+
+## Optional local integration
+
+To add local instructions and enable maintenance at supported Claude Code events, run this separate setup command against the target Git repository root:
+
+```sh
+node /absolute/path/to/doc-plugin/scripts/cli.mjs setup --root /absolute/path/to/repository
+node /absolute/path/to/doc-plugin/scripts/cli.mjs setup-status --root /absolute/path/to/repository
+```
+
+Setup adds owned files under `.claude/doc-vault/`. It reuses a single existing, locally ignored `CLAUDE.md` or `.claude/CLAUDE.md` with a marked import. Tracked, unignored, ambiguous, or AGENTS-only instruction setups stay untouched and use an ignored rule adapter. With no detected instruction entry point, setup creates an ignored root `CLAUDE.md`. It never creates `CLAUDE.local.md`, changes global instructions, or edits Claude settings. Namespace collisions are reported; user content is preserved.
+
+Setup does not build a vault. Run `/doc-vault:build` after loading the plugin; hooks maintain only an existing owned vault. The installer reports instruction activation as unverified because host settings and version can affect loading. See [setup and preservation details](docs/installation.md#optional-local-integration).
 
 ## Commands
 
@@ -65,7 +80,11 @@ node /absolute/path/to/doc-plugin/scripts/cli.mjs lint --root /absolute/path/to/
 node /absolute/path/to/doc-plugin/scripts/cli.mjs watch --root /absolute/path/to/repository
 ```
 
-`watch` is optional. It refreshes static maps and invalidation state while running; it does not start a model or rewrite semantic explanations. Run `/doc-vault:sync` to update those explanations. A read-only plugin `SessionStart` hook reports freshness when a vault already exists; it does not create or update one. No Git hooks or Git configuration are installed.
+`watch` is optional. It refreshes static maps and invalidation state while running; it does not start a model or rewrite semantic explanations. Run `/doc-vault:sync` to update those explanations.
+
+Without local setup, the plugin's session-start hook remains a read-only freshness notice. With maintenance enabled by setup, session start, new prompts, tool activity, and agent completion can refresh static state. Plan-mode and subagent events are skipped, and repeated tool events are throttled. External edits, pulls, and branch changes are discovered at the next reconciliation event. No Git hooks, Git configuration, or permanent background process are installed.
+
+The finish hook can request one main-agent sync continuation per pending snapshot; it does not guarantee completed AI analysis. Standards assessments and independent review remain separate commands. When Claude Code is closed, session hooks do not run. See [maintenance boundaries](docs/architecture.md#maintenance).
 
 ## How analysis adapts
 
@@ -84,11 +103,17 @@ Meaningful supported non-Markdown sources receive managed file notes. Markdown i
 
 Notes use Markdown and vault-local wiki links for navigation in Obsidian or another compatible viewer. Open `edw-doc/` as the vault. The broker owns note identifiers, timestamps, source hashes, generated links, and review records. Keep personal notes in `edw-doc/annotations/`; the publisher stops when it detects edits to a managed note so you can preserve those edits separately. See [the vault layout](docs/vault-layout.md).
 
+The shared [documentation style](policies/documentation-style.md) calls for simple explanations, numbered procedures and reading paths when order matters, and source-backed diagrams when useful. Ordinary wiki links form Obsidian graph connections; Mermaid diagrams explain processes within notes. A diagram must not invent missing logic or deployed connections.
+
 File notes include a standards section. Results distinguish complies, diverges, noncompliant, unknown, not applicable, not assessed, and stale. Only a demonstrated violation of a declared requirement can be noncompliant; bundled recommendations remain advisory. These are static source assessments, not executed checks or certification. See [standards and assessment](docs/standards.md).
 
 The ignored vault is local. Pulling or pushing source does not share its contents. Rebuild it on each workstation or define a separate approved sharing process. Cross-repository and remote references remain unresolved boundaries in this version.
 
-## Updating from 0.1.0
+## Updating
+
+Version 0.1.2 adds optional local setup, event-driven maintenance, and shared writing guidance. After updating, restart the plugin session and run sync to apply revised analysis guidance. Run `setup` again only for repositories where you want the local integration; it preserves configuration and user edits. Plugin distribution updates do not by themselves complete fresh AI analysis. See [the 0.1.2 release notes](docs/release-v0.1.2.md).
+
+### Moving a 0.1.0 vault
 
 Version 0.1.1 changes the default generated folder from `doc-vault/` to `edw-doc/`; the plugin name and `/doc-vault:*` commands stay the same. Existing vaults are not silently moved. To migrate a previous default vault, run this from the plugin checkout:
 
@@ -109,7 +134,7 @@ Excel support is structural: available sheet names, cell addresses/types, and co
 ```text
 .claude-plugin/      Plugin and marketplace manifests
 .mcp.json            Local broker registration
-hooks/               Read-only session-start freshness notice
+hooks/               Session notice and opted-in maintenance events
 agents/              Curator, read-only worker, reviewer, standards specialist
 skills/              Build/sync/audit/onboard/ask/status/review/standards
 policies/            Authority, evidence, and output rules
@@ -124,4 +149,4 @@ fixtures/            Synthetic repositories for verification
 docs/                Architecture, operations, and release guidance
 ```
 
-For implementation decisions and acceptance criteria, see [the original plan](docs/plan.md), [the 0.1.1 plan](docs/plan-v0.1.1.md), and [the release notes](docs/release-v0.1.1.md). Research covers [repository wiki systems](docs/research/wiki-systems.md) and [standards/review systems](docs/research/standards-systems.md); the [source-analysis exercise](docs/research/evaluation-v0.1.1.md) records results and limits. From this checkout, run `node --test` for runtime checks and `npm run check` for package manifests, restricted agent tools, bundled guidance, and documentation links. See [what was verified](docs/validation.md) for the scope and remaining host checks. Before sharing or publishing a distribution, use [the release checklist](docs/public-release-checklist.md).
+For implementation decisions and acceptance criteria, see [architecture](docs/architecture.md), [the 0.1.2 release notes](docs/release-v0.1.2.md), [the original plan](docs/plan.md), and [the 0.1.1 plan](docs/plan-v0.1.1.md). Research covers [repository wiki systems](docs/research/wiki-systems.md) and [standards/review systems](docs/research/standards-systems.md); the [source-analysis exercise](docs/research/evaluation-v0.1.1.md) records results and limits. From this checkout, run `node --test` for runtime checks and `npm run check` for package manifests, restricted agent tools, bundled guidance, and documentation links. See [what was verified](docs/validation.md) for the scope and remaining host checks. Before sharing or publishing a distribution, use [the release checklist](docs/public-release-checklist.md).

@@ -1,5 +1,7 @@
 # File and folder analysis
 
+Read `policies/documentation-style.md` through `vault_context` before drafting. Use numbered execution steps when order matters, simple explanations, and a small evidence-backed diagram or structure when it makes a complex process easier to follow. Keep ordinary verified wiki links alongside diagrams for vault navigation.
+
 Use `vault_packet` for the source path, current hash, static facts, and related-source candidates. Read the relevant source ranges. Follow helpers, callers, fixtures, schemas, and configuration when they materially determine behavior. A filename, test description, import, or search match is a lead, not a complete explanation.
 
 ## Inspect before explaining
@@ -37,4 +39,4 @@ Every substantive section requires exact current evidence. Add all contributing 
 
 Do not create file notes for Markdown/README sources; use them as evidence. Unsupported binary formats, truncated reads, and uninspected files remain visible limitations. Similar names, import proximity, or lexical extraction do not prove semantic relationships.
 
-Before publishing, check whether a new engineer can explain the process, locate each important step, identify a failure path, understand what tests check, and distinguish findings from hypotheses. When the requested scope exceeds the available budget, finish a coherent group and name the remaining work instead of replacing detailed analysis with generic summaries.
+Before publishing, check whether a new engineer can explain the process, locate each important step, identify a failure path, understand what tests check, and distinguish findings from hypotheses. Check that any diagram agrees with the numbered explanation, branch conditions, and evidence. When the requested scope exceeds the available budget, finish a coherent group and name the remaining work instead of replacing detailed analysis with generic summaries.

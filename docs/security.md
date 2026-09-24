@@ -8,6 +8,20 @@ The intended write boundary is the configured vault, `edw-doc/` by default, with
 
 Path validation and controlled output construction prevent ordinary traversal and arbitrary output-path requests. Source eligibility checks, bounded reads, exclusion rules, hashes, and evidence-range validation reduce accidental disclosure and stale citations. They do not prove that prose is correct or that all sensitive information was detected.
 
+## Separate setup allowance
+
+`setup`, `setup-status`, and `uninstall` are operator CLI commands, not MCP operations available to analysis agents. Setup requires an explicit Git repository root. Its write allowlist covers owned `.claude/doc-vault` instructions, configuration and ownership records, an owned `.claude/rules/doc-vault.md` adapter or minimal root `CLAUDE.md`, a marked import in a single supported locally ignored Claude instruction file, and the exact required `.gitignore` additions.
+
+Existing tracked or unignored instruction files remain untouched. AGENTS-only or ambiguous setups use the rule adapter because host instruction loading cannot be established locally. Setup never creates `CLAUDE.local.md`, changes global instructions, edits Claude settings, installs Git hooks, or alters Git configuration. Host activation remains unverified until checked in the real host.
+
+The installer records hashes for owned files and exact content for owned blocks. Repeated setup and uninstall preserve user edits; namespace collisions are errors rather than permission to replace existing content. Uninstall preserves the vault, ignore entries, and directories, and disables maintenance even when edited integration content remains. Ownership checks are preservation controls, not a security boundary against a hostile process that can rewrite both files and records. See [installation](installation.md) and [the business preservation rules](business-overview.md).
+
+## Opted-in hook maintenance
+
+Packaged hooks can statically refresh an existing owned vault only after local setup enables maintenance. Without setup, session start retains a read-only status notice. Hooks never initialize a missing vault or run repository code. Their writes use the existing broker boundary plus maintenance bookkeeping inside the vault; they do not grant setup access to the analysis agents.
+
+Plan-mode and subagent events skip maintenance writes. `PostToolUse` skips Doc Vault broker calls and throttles repeated checks. A main-agent `Stop` event can request one sync continuation per pending snapshot, guarded against recursive continuation. Failures leave work pending without indefinitely blocking normal work. Hook processes run under the host's permissions, so the checks do not replace host sandboxing. There is no permanent background AI worker, and instruction loading or a hook request does not prove completed AI analysis.
+
 ## Agent permissions are scoped
 
 The curator receives only its named broker tools. The worker receives only read operations. The reviewer additionally receives the narrow review-record operation and cannot publish corrected notes. The standards specialist has only read operations plus rule registration and per-file assessment. It cannot scan or publish arbitrary notes. The broker derives standards output paths and links and validates source/rule revisions. These controls cannot prove that prose or a claimed repository mandate follows from evidence. The ordinary workflow works sequentially without nested subagents.

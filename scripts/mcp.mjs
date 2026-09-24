@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 import { createEngine, VERSION } from '../src/engine.mjs';
 import { gitRead } from '../src/inventory.mjs';
+import { integrationStatus } from '../src/integration.mjs';
 
 // The root is fixed at process start. A model cannot redirect the broker to
 // arbitrary directories through a tool argument.
 const initial=process.env.DOC_VAULT_ROOT || process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const root=process.env.DOC_VAULT_ROOT ? initial : gitRead(initial,['rev-parse','--show-toplevel'])?.trim() || initial;
-const engine=await createEngine(root,{vaultName:process.env.DOC_VAULT_NAME || 'edw-doc'});
+const setup=integrationStatus(root);
+if(setup.installed&&process.env.DOC_VAULT_NAME&&process.env.DOC_VAULT_NAME!==setup.vaultName)throw new Error('DOC_VAULT_NAME differs from local setup. Align the configuration before starting the broker.');
+const engine=await createEngine(root,{vaultName:process.env.DOC_VAULT_NAME || (setup.installed?setup.vaultName:'edw-doc')});
 const obj=(properties={},required=[])=>({type:'object',properties,required,additionalProperties:false});
 const str={type:'string'};
 const integer={type:'integer',minimum:1};

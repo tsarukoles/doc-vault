@@ -1,14 +1,16 @@
 # Validation record
 
-This record describes development verification of version 0.1.1. It is not a production certification.
+This record describes development verification through version 0.1.2. It is not a production certification.
 
 ## Local verification
 
-The automated suite passes: **76 tests, no failures or skips**. It exercises source-write boundaries, narrow ignore updates, path traversal, redirected output paths, Git worktrees, tracking checks, file maps, source fingerprints, additions/deletions/renames, dependency invalidation, evidence locators, exact-note review, publication recovery, and preservation of annotations.
+The 0.1.2 full-suite run passed **110 tests, no failures or skips**. After the final instruction-parser refinement, all **24 setup regression tests** passed, including the added unclosed-fence/comment case. These checks exercise source-write boundaries, narrow ignore updates, path traversal, redirected output paths, Git worktrees, tracking checks, file maps, source fingerprints, additions/deletions/renames, dependency invalidation, evidence locators, exact-note review, publication recovery, and preservation of annotations.
 
 It also covers CLI and MCP transport behavior, a read-only session hook, CSV and XLSX inspection limits, rejected media embeds, linked agent-note navigation, and a persistent queue for explanations requiring fresh analysis after static refresh.
 
 Version 0.1.1 adds missing-ignore creation, `.claude` exclusion and tracked-file diagnostics, guarded folder migration, schema-one upgrade compatibility, standards/backlinks, source and authority fingerprints, advisory-versus-declared enforcement, unknown results, dependency/relationship invalidation, and live stale counts before sync. Grader tests verify the mechanics of detecting wrong labels and invalid evidence; they do not demonstrate an agent's ability to find defects.
+
+Version 0.1.2 adds setup/removal preservation checks, ignored versus tracked instruction handling, custom vault selection, unchanged settings and Git metadata, repeated setup, user-edited files and blocks, import chains and example imports, encoding boundaries, local namespace collisions, partial removal, and traversal/link protections. Hook tests exercise external edits and new directories, additions/deletions/renames, unchanged source bytes, one continuation per snapshot, a custom main agent, plan-mode and subagent skips, disabled maintenance, concurrent controllers, manual-note conflicts, and backlog clearing after publication. CLI and MCP tests confirm custom vault selection without adding setup tools to analysis agents.
 
 Run from the plugin checkout:
 
@@ -33,6 +35,6 @@ This checks the workflow and runtime contract. It does not establish that an arb
 
 ## Still to verify in the intended host
 
-Claude Code was unavailable in the development environment. Real plugin loading, MCP registration, forked-agent tool restrictions, marketplace installation and updates, and the approved model/provider path need an integration smoke test. Bedrock requests were not made.
+Claude Code was unavailable in the development environment. Real plugin loading, MCP registration, forked-agent tool restrictions, marketplace installation and updates, instruction activation, actual hook dispatch/Stop continuation, and the approved model/provider path need an integration smoke test. Hook protocol tests simulate host events through the command entry points; they do not establish real host behavior. Bedrock requests were not made.
 
 Use the [host pilot in the plan](plan.md) and the [installation checks](installation.md). Before public distribution, complete the [release checklist](public-release-checklist.md), including license selection.

@@ -3,15 +3,22 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createEngine } from '../src/engine.mjs';
 import { gitRead } from '../src/inventory.mjs';
+import { maintain } from '../src/maintenance.mjs';
+import { integrationStatus } from '../src/integration.mjs';
 
-// Read-only lifecycle hint. It never creates a vault or installs native hooks.
+// Read-only unless separate local setup enabled maintenance of an existing vault.
 try {
   const input=fs.readFileSync(0,'utf8');
   if(input.length>1024*1024)throw new Error('Hook input too large.');
   const event=input.trim()?JSON.parse(input):{};
   const initial=process.env.DOC_VAULT_ROOT || event.cwd || process.cwd();
   const root=process.env.DOC_VAULT_ROOT ? initial : gitRead(initial,['rev-parse','--show-toplevel'])?.trim() || initial;
-  const vaultName=process.env.DOC_VAULT_NAME || 'edw-doc';
+  const setup=integrationStatus(root);
+  const vaultName=process.env.DOC_VAULT_NAME || (setup.installed ? setup.vaultName : 'edw-doc');
+  const maintenance=await maintain(root,{...event,hook_event_name:'SessionStart'},{vaultName:process.env.DOC_VAULT_NAME});
+  if(!maintenance.skipped) {
+    process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:'SessionStart',additionalContext:maintenance.message}})+'\n');
+  } else
   if(fs.existsSync(path.join(root,vaultName))) {
     const engine=await createEngine(root,{vaultName});
     const status=await engine.status();

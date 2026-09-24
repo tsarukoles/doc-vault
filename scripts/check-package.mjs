@@ -20,6 +20,7 @@ const AGENT_TOOLS = {
 const REQUIRED = [
   'package.json', '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', '.mcp.json',
   'hooks/hooks.json', 'README.md', 'scripts/cli.mjs', 'scripts/mcp.mjs', 'scripts/session-start.mjs',
+  'scripts/maintenance-hook.mjs', 'src/integration.mjs', 'src/maintenance.mjs', 'policies/documentation-style.md', 'docs/business-overview.md',
   'scripts/check-package.mjs', 'src/engine.mjs', 'src/security.mjs', 'src/inventory.mjs',
   'src/analyze.mjs', 'src/readers.mjs', 'src/render.mjs', 'policies/core.md',
   ...Object.keys(AGENT_TOOLS).map(name => `agents/${name}.md`),
@@ -181,14 +182,17 @@ export function checkPackage(root = PACKAGE_ROOT) {
     }
   }
   if (hooks) {
-    if (!hooks.hooks || Object.keys(hooks.hooks).length !== 1 || !Array.isArray(hooks.hooks.SessionStart)) fail('Only the documented SessionStart hook is allowed.');
-    else {
-      const groups = hooks.hooks.SessionStart;
-      if (groups.length !== 1 || !Array.isArray(groups[0]?.hooks) || groups[0].hooks.length !== 1) fail('Expected one session-start hook command.');
+    const expected=['SessionStart','UserPromptSubmit','PostToolUse','Stop'];
+    if (!hooks.hooks || Object.keys(hooks.hooks).length !== expected.length || expected.some(event=>!Array.isArray(hooks.hooks[event]))) fail('Expected only the four documented lifecycle hooks.');
+    else for(const event of expected) {
+      const groups = hooks.hooks[event];
+      if (groups.length !== 1 || !Array.isArray(groups[0]?.hooks) || groups[0].hooks.length !== 1) fail(`Expected one ${event} hook command.`);
       else {
         const hook = groups[0].hooks[0];
-        if (hook?.type !== 'command' || hook?.command !== 'node "${CLAUDE_PLUGIN_ROOT}/scripts/session-start.mjs"') fail('SessionStart must invoke only the bundled freshness script.');
-        if (!Number.isFinite(hook?.timeout) || hook.timeout <= 0 || hook.timeout > 30) fail('SessionStart hook requires a bounded timeout of at most 30 seconds.');
+        const script=event==='SessionStart'?'session-start':'maintenance-hook';
+        if (hook?.type !== 'command' || hook?.command !== `node "\${CLAUDE_PLUGIN_ROOT}/scripts/${script}.mjs"`) fail(`${event} must invoke only its bundled lifecycle script.`);
+        if (hook?.async || hook?.asyncRewake || groups[0].matcher) fail(`${event} must use the reviewed synchronous checkpoint configuration.`);
+        if (!Number.isFinite(hook?.timeout) || hook.timeout <= 0 || hook.timeout > 30) fail(`${event} requires a bounded timeout of at most 30 seconds.`);
       }
     }
   }

@@ -16,15 +16,15 @@ Use this before publishing a repository or release archive. This document does n
 - Verify that the single-plugin marketplace points to `./` and that packaged skill/context resources are included.
 - Verify Node.js 20-or-later support and the absence of undeclared runtime dependencies.
 - Run the local tests and package checks. Record actual results and unresolved failures.
-- Validate loading and the seven skills in a real supported Claude Code installation before claiming end-to-end host compatibility.
+- Validate loading and the eight skills in a real supported Claude Code installation before claiming end-to-end host compatibility.
 
 ## Behavior and claims
 
-- Confirm writes remain within the generated vault and controlled `.gitignore` exception in tested scenarios.
+- Confirm ordinary analysis writes remain within the generated vault and controlled `.gitignore` exception in tested scenarios. Exercise the separate setup allowlist, tracked-file fallback, repeat installation, user edits, and clean removal with maintenance disabled afterward.
 - Exercise stale evidence, changed-note review, deletion, rename, invalid paths, and concurrent update handling.
 - Verify the source-as-data instruction boundary with a synthetic instruction-injection fixture.
 - Check that docs disclose lexical extraction, partial workbook support, provider processing, and host sandbox limits.
-- Confirm automatic refresh claims describe static maintenance, not an unattended model service.
+- Confirm automatic refresh claims describe static maintenance and a bounded active-session sync opportunity, not an unattended model service. Verify hooks in plan mode, with custom main agents, after external edits, and after an interrupted update.
 - Do not claim human approval, security certification, production readiness, or exhaustive framework understanding from local tests.
 
 ## Release and updates
