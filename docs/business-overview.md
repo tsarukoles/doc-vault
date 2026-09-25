@@ -39,7 +39,7 @@ flowchart TD
   J --> D
 ```
 
-1. **Optionally set up local integration.** Reuse the developer's existing instruction structure where possible and add the tool's own ignored files. Manual build and sync also work without this setup.
+1. **Set up project integration.** Approved build and sync scans add the tool's owned local files and connect Claude instructions under the same command approval. Existing instructions and settings are preserved. Non-Git targets can still receive a vault but report that integration was skipped.
 2. **Build the map.** Deterministic code inventories permitted files, records fingerprints, and creates navigation and baseline notes. This alone is not full AI analysis.
 3. **Explain the project.** The active Claude Code session uses its configured model to inspect evidence and write draft explanations. Complex files receive more detail than simple files.
 4. **Check the results.** Mechanical checks and a separate agent reviewer examine different aspects of quality. Standards assessments use their own specialist workflow.
@@ -49,7 +49,7 @@ Ordinary wiki links connect related notes in Obsidian. Mermaid diagrams explain 
 
 ## Local integration and preservation rules
 
-The optional setup process adds owned instructions and configuration under `.claude/edw-doc/` for a fresh installation. Earlier owned `.claude/doc-vault/` installations are retained in place and can receive updated command instructions by repeating setup. It reuses a single supported, locally ignored Claude instruction entry point by adding a small marked reference. Existing tracked, unignored, AGENTS-only, or ambiguous instruction setups are preserved; an ignored rule adapter supplies the integration instead, unless an existing Claude import already supplies the reference. If no entry point is detected, setup can create a minimal ignored root `CLAUDE.md`. Setup reports instruction activation as unverified until checked in the actual host.
+Project integration runs during approved build and sync scans, with explicit CLI setup available separately. It adds owned instructions and configuration under `.claude/edw-doc/`; earlier owned `.claude/doc-vault/` installations are retained in place. A single supported, locally ignored Claude entry point receives a small marked reference. Existing tracked, unignored, or ambiguous Claude instructions are preserved and use an ignored rule adapter, unless an existing import supplies the reference. If neither root `CLAUDE.md` nor `.claude/CLAUDE.md` exists, setup creates a minimal ignored root `CLAUDE.md`, preserving other instruction files. Its result reports changes, repairs, and warnings; instruction activation remains unverified until checked in the host.
 
 `AGENTS.md` is the standard plural filename. A custom `AGENT.md` is preserved without assuming the host automatically loads it. Setup does not create `CLAUDE.local.md` or change global instructions. See [installation](installation.md) for supported entry points and host requirements.
 
@@ -58,11 +58,11 @@ The preservation rules are:
 1. **Reuse before creating.** Add only the missing tool-owned files and references. Preserve the developer's existing structure.
 2. **No duplicate installation.** Repeated setup recognizes its files and marked references instead of adding another copy.
 3. **Preserve user edits.** Ownership records and content fingerprints identify unchanged managed content. Updates or removal preserve edited or conflicting content and report what needs attention.
-4. **Keep existing configuration.** Do not replace Claude settings, other rules, agents, or hooks. Hook logic ships with the plugin so local setup does not register duplicate hooks.
+4. **Keep existing configuration.** Preserve Claude settings, other rules, agents, scripts, hooks, and disabled maintenance. Runtime scripts and hook logic remain packaged with the plugin, so setup does not copy scripts or register duplicate hooks. Explicit setup can repair missing owned files; a missing configuration is restored with maintenance disabled.
 5. **Respect Git tracking.** Create a missing `.gitignore` or append the exact required ignore entries while preserving existing content. Never untrack files. Ignoring a file that Git already tracks does not make its changes private.
 6. **Protect personal notes.** Keep personal additions in `edw-doc/annotations/`. Managed vault notes are checked before replacement; detected manual edits require resolution instead of silent overwriting.
 7. **Remove only owned additions.** Uninstall removes unchanged integration files or marked blocks it owns. It preserves repository instructions, user changes, ignore entries, directories, and the generated knowledge vault. Automatic maintenance is disabled even when edited integration content remains.
-8. **Keep permissions separate.** Setup has a small integration write allowance. Analysis agents retain their restricted documentation permissions; these instructions do not limit unrelated work by the developer's normal coding agent.
+8. **Keep permissions scoped.** Build and sync approval includes only the documented integration additions through the constrained broker. Other command scopes do not install integration. Agents have no arbitrary filesystem or shell access; these instructions do not limit unrelated work by the developer's normal coding agent.
 
 ## Maintenance: what is automatic
 
@@ -76,7 +76,7 @@ Each developer keeps a local vault. Pulling or pushing source does not upload, d
 
 | Operation | Allowed scope |
 |---|---|
-| Ordinary analysis | Read broker-approved repository content; write managed output inside the configured vault; create or append the exact vault and `.claude` ignore rules. |
+| Ordinary analysis | Read broker-approved content, write managed vault output, and create or append exact ignore rules. Approved build/sync scans additionally ensure owned local integration and report its status. |
 | Explicit setup and uninstall | Manage only the owned local integration files, supported marked instruction references, installation records, and required ignore additions. Preserve conflicts and existing user content. |
 | Source changes | No edits to application code, tests, pipeline definitions, data, or other project content as a result of findings. |
 | Execution and external access | No execution of repository tests, builds, scripts, formulas, or macros; no deployment, cloud inspection, remote repository crawl, or automatic publication. |

@@ -79,6 +79,7 @@ export function createRunAuthorization(root, { now = Date.now } = {}) {
       const grant = current(runId);
       if (!COMMAND_TOOLS[grant.command].includes(tool)) throw new Error(`Tool ${tool} is outside the approved ${grant.command} command.`);
       grant.lastUsed = now();
+      return { command: grant.command };
     },
     end(runId) {
       if (!grants.delete(runId)) throw new Error('This run is already closed or unknown.');

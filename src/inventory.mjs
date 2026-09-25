@@ -17,7 +17,7 @@ export function gitRead(root, args, input) {
       env, input, encoding: 'utf8', timeout: 10000, maxBuffer: 8 * 1024 * 1024, windowsHide: true, stdio: ['pipe','pipe','pipe']
     });
   } catch (error) {
-    if (args[0] === 'check-ignore' && error.status === 1) return '';
+    if (args[0] === 'check-ignore' && error.status === 1) return typeof error.stdout === 'string' ? error.stdout : '';
     return null;
   }
 }
@@ -35,14 +35,51 @@ export function assertUntrackedVault(root, vaultName) {
 
 export function ignoreDiagnostics(root, vaultName) {
   const plan = ignorePlan(root, vaultName);
-  const tracked = gitRead(root, ['ls-files', '-z', '--', '.claude']);
-  const trackedClaudeFiles = tracked === null ? [] : tracked.split('\0').filter(Boolean);
+  const repositoryRoot = path.resolve(root);
+  const gitRoot = gitRead(root, ['rev-parse', '--show-toplevel'])?.trim() || null;
+  const targets = [`${vaultName}/`, '.claude/'];
+  const outputPaths = Object.fromEntries(targets.map(target => [target, path.join(repositoryRoot, target)]));
+  const trackedClaude = gitRoot ? gitRead(root, ['ls-files', '-z', '--', '.claude']) : null;
+  const trackedVault = gitRoot ? gitRead(root, ['ls-files', '-z', '--', vaultName]) : null;
+  const trackedClaudeFiles = trackedClaude?.split('\0').filter(Boolean) || [];
+  const trackedVaultFiles = trackedVault?.split('\0').filter(Boolean) || [];
+  // --no-index separates effective ignore rules from tracking: a tracked file
+  // can match a rule while remaining tracked, which is reported independently.
+  const matches = gitRoot ? gitRead(root, ['check-ignore', '--no-index', '--verbose', '--non-matching', '-z', '--stdin'], `${targets.join('\0')}\0`) : null;
+  const effectiveRules = targets.map(target => ({ path: target, absolute_path: outputPaths[target], ignored: null, source: null, line: null, pattern: null }));
+  if (matches !== null) {
+    const fields = matches.split('\0');
+    for (let index = 0; index + 3 < fields.length; index += 4) {
+      const [source, line, pattern, target] = fields.slice(index, index + 4);
+      const result = effectiveRules.find(item => item.path === target);
+      if (result) Object.assign(result, { ignored: Boolean(pattern) && !pattern.startsWith('!'), source: source || null, line: line ? Number(line) : null, pattern: pattern || null });
+    }
+  }
+  const inspected = Boolean(gitRoot && trackedClaude !== null && trackedVault !== null && effectiveRules.every(item => item.ignored !== null));
   const warnings = [];
   if (plan.missingRules.length) warnings.push(`Required root ignore rules need repair: ${plan.missingRules.join(', ')}. Run build or sync.`);
+  if (!gitRoot && !hasGitMetadata(root)) warnings.push('This folder is not in an inspectable Git worktree. Ignore rules can be maintained, but Git ignore verification is unavailable.');
+  else if (!inspected) warnings.push('Git metadata could not be fully inspected; generated output ignore protection is unverified. Restore Git access before generating a vault.');
+  for (const item of effectiveRules) if (item.ignored === false) warnings.push(`Git does not ignore ${item.absolute_path}. Check the project root and effective ignore rules; a matching line in a different .gitignore is not sufficient.`);
+  if (trackedVaultFiles.length) warnings.push(`${trackedVaultFiles.length} vault files are already tracked. Ignore rules do not untrack them; choose an untracked vault directory or review tracking manually.`);
   if (trackedClaudeFiles.length) warnings.push(`${trackedClaudeFiles.length} .claude files are already tracked. Ignore rules do not untrack them; review this manually.`);
-  if (tracked === null && hasGitMetadata(root)) warnings.push('Git metadata could not be inspected for tracked .claude files.');
   return { gitignore_exists:plan.exists, required_rules:plan.requiredRules, missing_rules:plan.missingRules,
-    tracked_claude_files:trackedClaudeFiles, git_available:tracked !== null, warnings };
+    repository_root:repositoryRoot, git_root:gitRoot, output_paths:outputPaths, effective_rules:effectiveRules,
+    tracked_vault_files:trackedVaultFiles, tracked_claude_files:trackedClaudeFiles,
+    git_available:Boolean(gitRoot), git_verified:inspected && effectiveRules.every(item => item.ignored) && !trackedVaultFiles.length,
+    warnings };
+}
+
+export function assertIgnoredOutputs(root, vaultName) {
+  const diagnostics = ignoreDiagnostics(root, vaultName);
+  if (!diagnostics.git_available && !hasGitMetadata(root)) return diagnostics;
+  if (diagnostics.tracked_vault_files.length) {
+    throw new Error(`The vault contains tracked files at ${diagnostics.output_paths[`${vaultName}/`]}. Ignore rules do not untrack files. Choose an untracked vault directory before generating.`);
+  }
+  if (!diagnostics.git_verified) {
+    throw new Error(`Git ignore protection could not be verified for generated outputs in ${diagnostics.repository_root}. ${diagnostics.warnings.join(' ')}`);
+  }
+  return diagnostics;
 }
 
 function hasGitMetadata(root) {

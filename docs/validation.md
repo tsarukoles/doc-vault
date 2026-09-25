@@ -1,8 +1,12 @@
 # Validation record
 
-This record describes development verification through version 0.2.0. It is not a production certification.
+This record describes development verification through version 0.2.1. It is not a production certification.
 
 ## Local verification
+
+The 0.2.1 full-suite run passed **172 tests, no failures or skips**. After adding the final explicit-subdirectory preflight check, all **nine automatic-setup tests** passed, including the new rejection-before-writes case. The package check passed for 60 documents, 11 JSON files, four agents, and eight skills; the whitespace check passed. These checks cover approved build/sync setup, absent and existing Claude instructions, preservation of settings and scripts, missing owned-file repair, legacy adapters, disabled maintenance, active writer and legacy-vault guards, read-only command boundaries, effective Git ignoring, unsupported ignore-file encodings, and standalone/toolkit marketplace layouts. Toolkit tests include both `plugins/edw-doc` and `plugins/doc-vault`, multiple catalog entries, and wrong or redirected source paths.
+
+The target `data-control-framework` checkout and its Claude session were not available here. The reported absence of integration is explained by the previous build path never invoking setup; the exact cause of that machine's ignore-display difference was not established. Git-root and nested-folder behavior is now tested and reported directly. The real installed-plugin upgrade, instruction loading, and permission prompt flow still require verification in the team's Claude/Bedrock environment.
 
 The 0.2.0 full-suite run passed **131 tests, no failures or skips**, and the package check passed for 59 documents, 11 JSON files, four agents, and eight skills. Added rename coverage verifies new product identity, legacy ownership and environment aliases, fixed repository binding, lifecycle revocation, replacement of old standards markers, source and annotation preservation, archived analysis after version upgrades, and safe updates/removal of legacy local integration. Existing custom vault names, edited instructions, tracked files, and duplicate integration detection are covered. The renamed plugin still needs a real Claude Code installation and approval-flow smoke test; these local checks do not validate host UI behavior.
 

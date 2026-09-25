@@ -19,7 +19,7 @@ const AGENT_TOOLS = {
   standards: [...READ_TOOLS, 'vault_rule', 'vault_assess', 'vault_begin', 'vault_end'],
 };
 const REQUIRED = [
-  'package.json', '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', '.mcp.json',
+  'package.json', '.claude-plugin/plugin.json', '.mcp.json',
   'hooks/hooks.json', 'README.md', 'GET-STARTED.md', 'scripts/cli.mjs', 'scripts/mcp.mjs', 'scripts/session-start.mjs',
   'scripts/maintenance-hook.mjs', 'src/integration.mjs', 'src/maintenance.mjs', 'policies/documentation-style.md', 'docs/business-overview.md',
   'scripts/run-lifecycle.mjs', 'src/run-authorization.mjs', 'src/identity.mjs', 'docs/run-approval.md',
@@ -81,14 +81,14 @@ export function checkPackage(root = PACKAGE_ROOT) {
   const documents = new Map();
   const json = new Map();
 
-  function checkedFile(relative, { directory = false } = {}) {
+  function checkedFile(relative, { directory = false, base = root } = {}) {
     if (typeof relative !== 'string' || !relative || relative.includes('\0') || path.isAbsolute(relative) || /^[A-Za-z]:/.test(relative)) {
       throw new Error('Path must be package-relative.');
     }
-    const absolute = path.resolve(root, relative);
-    const local = path.relative(root, absolute);
+    const absolute = path.resolve(base, relative);
+    const local = path.relative(base, absolute);
     if (!local || local === '..' || local.startsWith(`..${path.sep}`) || path.isAbsolute(local)) throw new Error('Path leaves the package.');
-    let current = root;
+    let current = base;
     for (const part of local.split(path.sep)) {
       current = path.join(current, part);
       if (fs.lstatSync(current).isSymbolicLink()) throw new Error('Symbolic links and junctions are not supported package assets.');
@@ -98,24 +98,24 @@ export function checkPackage(root = PACKAGE_ROOT) {
     return absolute;
   }
 
-  function read(relative) {
-    try { return fs.readFileSync(checkedFile(relative), 'utf8'); }
-    catch (error) { fail(`${relative}: ${error.message}`); return null; }
+  function read(relative, { base = root, label = relative } = {}) {
+    try { return fs.readFileSync(checkedFile(relative, { base }), 'utf8'); }
+    catch (error) { fail(`${label}: ${error.message}`); return null; }
   }
 
-  function readJson(relative) {
-    const text = read(relative);
+  function readJson(relative, { base = root, label = relative } = {}) {
+    const text = read(relative, { base, label });
     if (text === null) return null;
     try {
       const value = JSON.parse(text);
       if (!value || typeof value !== 'object' || Array.isArray(value)) {
-        fail(`${relative}: JSON root must be an object.`);
+        fail(`${label}: JSON root must be an object.`);
         return null;
       }
-      json.set(relative, value);
+      json.set(label, value);
       return value;
     }
-    catch (error) { fail(`${relative}: invalid JSON (${error.message}).`); return null; }
+    catch (error) { fail(`${label}: invalid JSON (${error.message}).`); return null; }
   }
 
   function walk(relative) {
@@ -140,7 +140,19 @@ export function checkPackage(root = PACKAGE_ROOT) {
 
   const pkg = readJson('package.json');
   const plugin = readJson('.claude-plugin/plugin.json');
-  const marketplace = readJson('.claude-plugin/marketplace.json');
+  // A standalone package owns its catalog. A toolkit may keep its catalog at
+  // the toolkit root, but only the explicit plugins/<folder> layout is trusted;
+  // never search arbitrary ancestors or inspect other plugins' assets.
+  const catalogRoots = [root];
+  if (path.basename(path.dirname(root)) === 'plugins') catalogRoots.push(path.dirname(path.dirname(root)));
+  const catalogs = catalogRoots.filter(base => {
+    try { fs.lstatSync(path.join(base, '.claude-plugin', 'marketplace.json')); return true; }
+    catch (error) {
+      if (error.code !== 'ENOENT') fail(`Marketplace catalog at ${base} could not be inspected: ${error.message}`);
+      return false;
+    }
+  }).map(base => ({ base, label:path.relative(root, path.join(base, '.claude-plugin', 'marketplace.json')).split(path.sep).join('/') }));
+  if (!catalogs.length) fail('A marketplace catalog is required in this package or at the toolkit root for plugins/<folder> packages.');
   const mcp = readJson('.mcp.json');
   const hooks = readJson('hooks/hooks.json');
   if (pkg) {
@@ -159,18 +171,27 @@ export function checkPackage(root = PACKAGE_ROOT) {
     if (pkg && plugin.version !== pkg.version) fail('Plugin and package versions must match.');
     if (typeof plugin.description !== 'string' || !plugin.description.trim()) fail('Plugin description is required.');
   }
-  if (marketplace) {
-    if (marketplace.name !== 'edw-doc-tools') fail('Marketplace name must match the documented edw-doc-tools name.');
-    if (!marketplace.owner?.name) fail('Marketplace owner name is required.');
-    if (!Array.isArray(marketplace.plugins) || marketplace.plugins.length !== 1) fail('This distribution must have exactly one marketplace plugin.');
-    else {
-      const entry = marketplace.plugins[0];
-      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) fail('Marketplace plugin entry must be an object.');
-      if (entry?.name !== plugin?.name) fail('Marketplace plugin name must match the plugin manifest.');
-      if (!['.', './'].includes(entry?.source)) fail('Marketplace source must point to this repository root.');
-      // A marketplace may omit version and use the plugin manifest as authority.
-      if (entry?.version !== undefined && entry.version !== plugin?.version) fail('Marketplace entry version must match the plugin version when present.');
-    }
+  for (const catalog of catalogs) {
+    const marketplace = readJson('.claude-plugin/marketplace.json', catalog);
+    if (!marketplace) continue;
+    const catalogFail = message => fail(`${catalog.label}: ${message}`);
+    if (typeof marketplace.name !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(marketplace.name)) catalogFail('Marketplace name must be a lowercase hyphen-separated slug.');
+    if (typeof marketplace.owner?.name !== 'string' || !marketplace.owner.name.trim()) catalogFail('Marketplace owner name is required.');
+    if (!Array.isArray(marketplace.plugins)) { catalogFail('Marketplace plugins must be an array.'); continue; }
+    const entries = marketplace.plugins.filter(entry => entry && typeof entry === 'object' && !Array.isArray(entry) && entry.name === 'edw-doc');
+    if (entries.length !== 1) { catalogFail('Marketplace must contain exactly one edw-doc plugin entry.'); continue; }
+    const entry = entries[0];
+    if (entry.name !== plugin?.name) catalogFail('Marketplace plugin name must match the plugin manifest.');
+    try {
+      if (typeof entry.source !== 'string' || !(entry.source === '.' || entry.source.startsWith('./')) || /[\\\x00-\x1f]/.test(entry.source) || entry.source.split('/').includes('..')) {
+        throw new Error('Source must be a local ./path without parent traversal.');
+      }
+      const source = path.resolve(catalog.base, entry.source);
+      if (source !== catalog.base) checkedFile(entry.source, { base:catalog.base, directory:true });
+      if (fs.realpathSync(source) !== root) throw new Error('Source must resolve exactly to this plugin package folder.');
+    } catch (error) { catalogFail(`Invalid edw-doc source: ${error.message}`); }
+    // A marketplace may omit version and use the plugin manifest as authority.
+    if (entry.version !== undefined && entry.version !== plugin?.version) catalogFail('Marketplace entry version must match the plugin version when present.');
   }
   if (mcp) {
     const servers = mcp.mcpServers;

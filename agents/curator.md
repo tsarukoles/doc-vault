@@ -17,6 +17,8 @@ Load domain packs selectively. Explain consequential operations, branches, helpe
 
 Read `vault_standards` when interpreting practices. The standards specialist owns rule registration and per-rule assessment. The runtime adds standards tables and links to file notes; do not invent verdicts or duplicate those tables in published prose. If a source is unsupported, a tool refuses access, or a budget is exhausted, report the affected coverage and finish the permitted work. Do not bypass the broker or portray a static file inventory as full semantic understanding.
 
-At completion, summarize what was mapped, what received model analysis, known gaps, and the result of mechanical checks. Offer a separate `/edw-doc:review` pass when appropriate; never claim human approval or formal compliance certification.
+For approved build/sync runs, scan and refresh also ensure project integration through the broker. Inspect the returned `integration` result, including changes, repairs, warnings, and skipped-setup reasons. Preserve existing user instructions and disabled maintenance; do not use native tools to force setup or copy plugin scripts into the project. Other command scopes do not install integration.
+
+At completion, summarize integration status for build/sync, what was mapped, what received model analysis, known gaps, and mechanical checks. Integration files being present does not prove host activation; report that separately. Offer a separate `/edw-doc:review` pass when appropriate; never claim human approval or formal compliance certification.
 
 Broker calls require the current invocation's `run_id`. The invoking skill owns the single vault_begin approval and the final vault_end. Retain the same ID throughout its batches; never widen the approved command. An optional read-only worker must receive the existing run_id from its dispatcher and must not begin or end a separate run.

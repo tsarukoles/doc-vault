@@ -1,113 +1,135 @@
 # Get started with EDW Doc
 
-Team guide for **EDW Doc 0.2.0** (previously Doc Vault).
+Team guide for **EDW Doc 0.2.1** (previously Doc Vault), installed from the shared **edw-ai-toolkit** repository.
 
-EDW Doc helps you understand a codebase. It creates a local folder of Markdown notes explaining files, components, flows, and project standards. You can ask questions, generate an onboarding guide, and refresh documentation after source changes.
+EDW Doc creates local Markdown notes explaining a project's files, components, flows, and standards. It uses the model/provider already configured in your Claude session, including an approved Bedrock connection. There is **no plugin build step and no `npm install` step**.
 
-There is **no plugin build step and no `npm install` step**. Install or load the plugin, then ask Claude to build the documentation for your project.
+## 1. Check your tools and folders
 
-## 1. Check your tools
+You need Node.js 20 or later, Git, Claude Code CLI 2.1.199 or later, and a working Claude session using your team's approved model/provider. Run in your terminal:
 
-You need:
-
-- **Node.js 20 or later**, available in your terminal.
-- **Git** and access to the plugin repository and the project you want to document.
-- **Claude Code CLI 2.1.199 or later**.
-- A working Claude session using your team's approved model/provider. If your team uses Bedrock, configure Claude for Bedrock first. EDW Doc uses that existing connection; it needs no separate model API key.
-
-Run these in your **terminal**, outside a Claude conversation:
-
-```sh
+```powershell
 node --version
 git --version
 claude --version
 ```
 
-The examples below use Windows paths. Replace them with your own absolute paths. On macOS/Linux, use paths such as `/Users/you/tools/edw-doc-plugin` and `/Users/you/projects/my-project`; the command names are the same.
+These Windows examples use three distinct locations. Replace them with your actual paths; on macOS/Linux, use the equivalent absolute paths.
 
-Keep these two folders separate:
-
-| Example folder | What it contains |
+| Example location | What it contains |
 |---|---|
-| `C:\tools\edw-doc-plugin` | This plugin's code and instructions. |
-| `C:\projects\my-project` | The project you want EDW Doc to document. |
+| `C:\tools\edw-ai-toolkit` | Shared toolkit repository and root marketplace catalog. |
+| `C:\tools\edw-ai-toolkit\plugins\edw-doc` | Complete EDW Doc plugin package. |
+| `C:\projects\data-control-framework` | Project you want documented. |
 
-## 2. Get and install the plugin
+Clone your team's actual `edw-ai-toolkit` Git repository, or pull your existing checkout. Your team supplies that repository URL. The older `tsarukoles/doc-vault` repository is not the toolkit URL.
 
-If you already cloned and pulled this repository, use that folder and skip cloning again.
+## 2. Prepare the toolkit catalog
 
-If you already installed `doc-vault@doc-vault-tools`, follow [the rename upgrade steps](#upgrading-from-doc-vault-013-or-earlier) instead of treating this as a normal plugin update.
+This section is for the person maintaining the toolkit. Teammates can skip to installation once this structure is committed and pulled.
 
-In your **terminal**:
+```text
+edw-ai-toolkit/
+├── .claude-plugin/
+│   └── marketplace.json
+├── agents/
+├── skills/
+├── standards/
+├── workflows/
+└── plugins/
+    └── edw-doc/
+        ├── .claude-plugin/plugin.json
+        ├── .mcp.json
+        ├── package.json
+        ├── agents/
+        ├── skills/
+        ├── hooks/
+        ├── scripts/
+        ├── src/
+        ├── policies/
+        ├── packs/
+        ├── schemas/
+        ├── templates/
+        ├── workflows/
+        ├── tests/
+        ├── fixtures/
+        ├── docs/
+        ├── README.md
+        ├── GET-STARTED.md
+        └── BUSINESS-REQUIREMENTS.md
+```
 
-```sh
-git clone https://github.com/tsarukoles/doc-vault.git "C:\tools\edw-doc-plugin"
-cd "C:\tools\edw-doc-plugin"
+Copy the **whole plugin package**, including hidden plugin files and supporting folders, into `plugins/edw-doc`. Exclude the original checkout's `.git` directory and local generated vaults. The toolkit's root `agents`, `skills`, or `workflows` do not replace the plugin's own folders. Scripts and hooks resolve paths from the installed plugin location.
+
+The installable catalog belongs at **`edw-ai-toolkit/.claude-plugin/marketplace.json`**. If it exists, preserve its other entries and add or update only EDW Doc. A minimal complete catalog is:
+
+```json
+{
+  "name": "edw-doc-tools",
+  "owner": { "name": "EDW toolkit maintainers" },
+  "plugins": [
+    {
+      "name": "edw-doc",
+      "source": "./plugins/edw-doc",
+      "description": "Local repository documentation and standards analysis."
+    }
+  ]
+}
+```
+
+Use your team's actual owner name. `source` is relative to the **toolkit root**, not the `.claude-plugin` directory. If the actual folder is still `plugins/doc-vault`, use `"source": "./plugins/doc-vault"` and that folder in every plugin path below. The installed plugin name stays `edw-doc`.
+
+The original standalone package can retain its own catalog; team installation registers the toolkit root catalog. Keep the plugin manifest version current when distributing changes. If the root catalog specifies a plugin version, keep it consistent with that manifest.
+
+Validate from the plugin directory:
+
+```powershell
+cd "C:\tools\edw-ai-toolkit\plugins\edw-doc"
 npm run check
 ```
 
-`npm run check` validates the plugin package. It does not build documentation or call a model.
+This validates the package; it does not create project documentation or call a model.
 
-The GitHub repository still uses the name `doc-vault`; it has not been renamed or moved. `edw-doc-plugin` is only the example local checkout folder. Keep using your existing checkout path if it has a different name.
+## 3. Install on each teammate's machine
 
-Register this checkout and install the plugin for your user account:
+Run in your **terminal**, from the toolkit root:
 
-```sh
-claude plugin marketplace add "C:\tools\edw-doc-plugin"
+```powershell
+cd "C:\tools\edw-ai-toolkit"
+claude plugin marketplace add ./
 claude plugin install edw-doc@edw-doc-tools --scope user
 claude plugin list
 ```
 
-Check that `edw-doc` is installed and enabled, with version **0.2.0** for this release. Keep the plugin checkout in place so you can update it later.
+Use **`./`**, including the slash, for a relative marketplace path. The name after `@` comes from the catalog's `name`: **`edw-doc-tools`**, even though the repository folder is `edw-ai-toolkit`.
 
-### Alternative: try it without a persistent installation
+If the catalog is already registered at the intended toolkit location, refresh it with `claude plugin marketplace update edw-doc-tools`. If it still points to an older standalone checkout, remove that old marketplace registration and register the toolkit root before installing. Keep the toolkit checkout available for later updates.
 
-Instead of the marketplace installation above, start Claude from the project you want documented:
+Check that `edw-doc` is enabled and shows version **0.2.1** for this release. If you previously installed `doc-vault`, follow the [one-time rename steps](#upgrading-from-doc-vault-013-or-earlier). Installing the plugin alone does not create files in every project; the first approved build or sync performs project integration.
 
-```sh
-cd "C:\projects\my-project"
-claude --plugin-dir "C:\tools\edw-doc-plugin"
+### Alternative: try without persistent installation
+
+From the target project, launch:
+
+```powershell
+cd "C:\projects\data-control-framework"
+claude --plugin-dir "C:\tools\edw-ai-toolkit\plugins\edw-doc"
 ```
 
-Use that launch command each time you want the plugin in a session. For the persistent installation, launch with plain `claude` as shown below.
+Repeat this launch when you want the plugin in a session. This path is the **plugin folder**, whereas marketplace registration uses the **toolkit root**. With persistent installation, launch using plain `claude`.
 
-## 3. Optional: enable local maintenance reminders
+## 4. Build the project's first vault
 
-Do this once per target project if you want local instructions and maintenance at Claude session checkpoints. The target must be the project's Git repository root.
+Close older Claude sessions. Start a new session in the project you want documented:
 
-In your **terminal**:
-
-```sh
-node "C:\tools\edw-doc-plugin\scripts\cli.mjs" setup --root "C:\projects\my-project"
-node "C:\tools\edw-doc-plugin\scripts\cli.mjs" setup-status --root "C:\projects\my-project"
-```
-
-Fresh setup adds owned integration files under `.claude/edw-doc/` and an instruction reference appropriate for the project. Existing owned `.claude/doc-vault/` installations remain in place; repeating setup updates unchanged instructions to `/edw-doc:*`. It preserves existing user instructions and does not edit Claude settings or Git configuration. It may add an ignored `CLAUDE.md` when no instruction entry point exists. See [setup details](docs/installation.md#optional-local-integration).
-
-Setup **does not build the vault**. Continue with the next step. `activation: unverified` means the setup tool cannot prove Claude loaded the instructions; inspect any other warnings and verify them in a real session.
-
-The default vault folder is `edw-doc`. To choose a different name during setup, append `--vault-name project-docs`. Keep using that same name whenever you repeat setup; do not rename an existing vault manually.
-
-## 4. Build your project's first vault
-
-Close any older Claude session. In your **terminal**, start a new one from the target project:
-
-```sh
-cd "C:\projects\my-project"
+```powershell
+cd "C:\projects\data-control-framework"
 claude
 ```
 
-If you chose the temporary installation, use the `--plugin-dir` launch command instead.
+Inside **Claude**, run `/edw-doc:status`. Verify the target root and plugin version. A missing vault is expected on first use. If the root is wrong, relaunch from the correct project; `EDW_DOC_ROOT`, if configured, can override the target. Legacy `DOC_VAULT_ROOT` and `DOC_VAULT_NAME` remain aliases; do not configure conflicting old and new values.
 
-Inside **Claude**, run:
-
-```text
-/edw-doc:status
-```
-
-Check the reported repository root and plugin version. A missing vault is expected on the first run. If the root is wrong, stop and relaunch from the correct project; an existing `EDW_DOC_ROOT` environment setting can also override the target. The old `DOC_VAULT_ROOT` and `DOC_VAULT_NAME` environment variables still work as compatibility aliases; use the new `EDW_DOC_ROOT` and `EDW_DOC_NAME` names for new configuration.
-
-Then run these commands **one at a time**, letting each finish:
+Run these **one at a time**, letting each finish:
 
 ```text
 /edw-doc:build
@@ -116,166 +138,170 @@ Then run these commands **one at a time**, letting each finish:
 /edw-doc:status
 ```
 
-| Command | What it does |
+| Command | Result |
 |---|---|
-| `build` | Creates the vault, maps supported files, and writes explanations from inspected source. |
-| `standards` | Finds evidenced project requirements and conventions, then records assessments. Requires a current build or sync first. |
-| `review` | Checks published claims against source in a separate agent context. Its default scope is a declared sample, not every note. |
-| `status` | Reports source freshness, documentation coverage, standards coverage, and remaining work. |
+| `build` | Sets up project integration, creates the vault, maps sources, and writes explanations from inspected evidence. |
+| `standards` | Finds evidenced requirements and conventions and records assessments. Requires a current build or sync. |
+| `review` | Checks published claims against source in a separate context. Its default scope is a declared sample, not every note. |
+| `status` | Reports freshness, analysis coverage, standards coverage, and remaining work. |
 
-### What to expect from permissions
+### What build and sync create
 
-Each `/edw-doc:*` command is designed to ask for **one initial approval**, then reuse it across that command's batches. Check the repository and requested operation in the approval. Each new command has its own approval; declining it ends that command.
+Approved build and sync scans perform setup automatically in an inspectable Git repository root. No separate setup command is required before normal first use. Non-Git folders can still receive a vault, but integration is skipped with an explicit reason; inspect the command's result.
 
-Ordinary analysis keeps source files read-only. It writes managed documentation and records inside the vault and may create or append the exact vault and `/.claude/` entries in the root `.gitignore`. Optional setup has the additional integration-file allowance described above. No tests or project code are executed by these analysis commands.
-
-Initial workspace/server trust and organization policies may still require extra prompts. The one-prompt flow needs verification in your team's CLI/provider environment; see the [approval checklist](docs/run-approval.md#update-and-verify). You do not need to disable permissions globally.
-
-### Check coverage, not just whether a command finished
-
-Version 0.2.0 **does not guarantee a complete AI sweep in one run**. Large repositories can exceed the available context or run budget. Read each command's completion report and use `status` to check what remains.
-
-- **Current inventory** means the file map matches the source snapshot. It does not mean every file has an AI explanation.
-- **Not assessed** means standards work remains. **Stale** means a previous result needs checking against newer evidence.
-- **Unknown** means the inspected evidence was insufficient for a conclusion; it is not a pass.
-- Excluded or unsupported files should remain visible as coverage limits.
-
-Continue the appropriate command for the remaining scope, for example:
+For a project with no Claude instructions, the expected structure is:
 
 ```text
-/edw-doc:standards Continue the remaining unassessed files. Report what was assessed and what is still pending.
+data-control-framework/
+├── .gitignore
+├── CLAUDE.md
+├── .claude/
+│   └── edw-doc/
+│       ├── instructions.md
+│       ├── config.json
+│       └── manifest.json
+└── edw-doc/
+```
+
+- Missing `.claude` is created. Existing settings, rules, agents, scripts, and hooks remain intact; only owned integration files are added.
+- If neither root `CLAUDE.md` nor `.claude/CLAUDE.md` exists, setup creates root **`CLAUDE.md`**. Existing `AGENTS.md` and `CLAUDE.local.md` are preserved.
+- Existing Claude instructions keep their contents. A suitable ignored file receives a marked import; otherwise, `.claude/rules/edw-doc.md` supplies the reference. An existing `.claude/CLAUDE.md` can be reused without creating another root copy.
+- The vault, `.claude/`, and a newly created root `CLAUDE.md` get exact root ignore rules. Already tracked files remain tracked.
+- Runtime scripts stay inside the installed plugin. No duplicate scripts or Git hooks are copied into the target project.
+- Existing owned `.claude/doc-vault/` integration is reused in place. User edits, configuration, and an existing disabled-maintenance preference remain intact.
+
+Read the integration result and warnings. Conflicting files are preserved and reported. `activation: unverified` means setup cannot prove Claude loaded the instructions; inspect them in your real session. See [integration details](docs/installation.md#project-integration).
+
+### Permissions and coverage
+
+Each command is designed for **one initial approval**, reused across its batches. Build and sync approval includes the narrow integration additions above. Source code stays read-only; writes are limited to managed documentation, owned integration files, supported instruction references, and exact ignore rules. No project tests or scripts are executed.
+
+Initial workspace/server trust and organization policies can still add prompts. The actual one-prompt flow needs verification in your team's CLI/provider environment; see the [host checklist](docs/run-approval.md#update-and-verify). Do not disable permissions globally.
+
+Version 0.2.1 **does not guarantee a complete AI sweep in one run**. Read the completion report and check remaining work:
+
+- A current inventory does not mean every file has an AI explanation.
+- **Not assessed** means standards work remains; **stale** means a previous result needs checking again.
+- **Unknown** means inspected evidence was insufficient; it is not a pass.
+- Excluded and unsupported files remain coverage limits.
+
+Continue remaining work explicitly, for example:
+
+```text
+/edw-doc:standards Continue the remaining unassessed files. Report completed and pending scope.
 ```
 
 AI review is not human approval, executed testing, or compliance certification.
 
 ## 5. Read and use the documentation
 
-Open `edw-doc/index.md` in your editor, or open the `edw-doc` folder as an Obsidian vault for wiki-link navigation.
+Open `edw-doc/index.md` in your editor, or open `edw-doc` as an Obsidian vault.
 
-| Location inside the vault | Use it for |
+| Vault location | Purpose |
 |---|---|
 | `index.md` | Main navigation. |
 | `analysis-index.md` | AI explanations, coverage, and review status. |
-| `file-map.md` | Finding source files and their notes. |
-| `onboarding/` | Getting oriented in the project. |
-| `flows/` | Following execution paths and connected components. |
-| `standards/` | Rules, assessments, and links back to source notes. |
-| `annotations/` | Your own notes and investigation context. |
+| `file-map.md` | Source files and their notes. |
+| `onboarding/` and `flows/` | Reading paths and process walkthroughs. |
+| `standards/` | Rules, assessments, and source links. |
+| `annotations/` | Your personal notes. |
 
-Some folders appear only after the corresponding notes are published. Put personal additions in `annotations/`. Direct edits to generated notes can stop later updates to preserve your changes. Do not edit the vault's `.system/` state manually.
+Some folders appear after the corresponding notes are published. Put personal additions in `annotations/`; direct edits to managed notes can stop updates to preserve your changes. Do not edit `.system/` state manually.
 
-Useful commands **inside Claude**:
-
-| What you need | Example |
-|---|---|
-| Understand code | `/edw-doc:ask Where are inputs validated, and how are failures handled?` |
-| Save an onboarding guide | `/edw-doc:onboard Explain the main execution path for a new engineer.` |
-| Investigate improvement opportunities | `/edw-doc:audit Inspect the test structure and report evidence-backed findings.` |
-| Refresh documentation | `/edw-doc:sync` |
-| Check remaining work | `/edw-doc:status` |
-
-`ask` reads and answers; use `onboard` when you want a saved guide. Findings are advisory and do not modify the implementation.
-
-## 6. After code changes, a pull, or a branch switch
-
-Run these **inside Claude**, one at a time:
+Useful commands inside Claude:
 
 ```text
+/edw-doc:ask Where are inputs validated, and how are failures handled?
+/edw-doc:onboard Explain the main execution path for a new engineer.
+/edw-doc:audit Inspect the test structure and report evidence-backed findings.
 /edw-doc:sync
 /edw-doc:status
 ```
 
-Sync compares the current checkout with the stored snapshot. It detects added, changed, removed, and renamed files, refreshes static maps, and re-analyzes affected explanations and dependencies. Uncertain renames may be treated as a removal and an addition. Check its report for unresolved or incomplete work.
+`ask` reads and answers; `onboard` saves a guide. Findings are advisory and do not modify source.
 
-When standards results or reviewed notes are affected, run `/edw-doc:standards` and `/edw-doc:review` separately. Sync does not complete those separate assessments for you.
+## 6. After edits, a pull, or a branch switch
 
-There is **one local vault per checkout**, not a saved vault for every Git branch. Switching branches does not restore an earlier branch's documentation snapshot. The next refresh reconciles the vault with the files currently checked out; older notes may become stale or be retired. Sync before relying on the documentation for your current branch.
+Run `/edw-doc:sync`, then `/edw-doc:status`. Sync compares the current checkout with stored state, detects additions, edits, deletions, and supported renames, and updates affected explanations. Uncertain renames may be treated as removal plus addition. Run standards and review separately when their results are affected.
 
-With optional maintenance enabled, Claude session events can refresh static maps and show a reminder. They do not run an automatic AI sweep or force you to sync before continuing development. If you ignore the reminder, documentation may stay incomplete or outdated.
+There is **one local vault per checkout**, not a separate saved vault for each branch. Switching branches does not restore an earlier branch's documentation. The next refresh reconciles the current files; older notes may become stale or retire. Sync before relying on current-branch documentation.
 
-When Claude is closed, pulling or switching branches does not trigger this plugin: no Git hooks or always-running model worker are installed. Without a model connection, you can inspect local status from the terminal:
+When local maintenance is enabled, Claude events can refresh static maps and show a nonblocking reminder. They do not run an automatic AI sweep or force synchronization. While Claude is closed, pulls and branch switches do not trigger this plugin: no Git hooks or always-running model worker are installed.
 
-```sh
-node "C:\tools\edw-doc-plugin\scripts\cli.mjs" status --root "C:\projects\my-project"
+Without a model connection, inspect local status from your terminal:
+
+```powershell
+node "C:\tools\edw-ai-toolkit\plugins\edw-doc\scripts\cli.mjs" status --root "C:\projects\data-control-framework"
 ```
 
-The terminal `sync` utility performs static refresh only. Use `/edw-doc:sync` in a connected Claude session for AI explanations.
+The terminal `scan`, `sync`, and optional `watch` utilities are static only and do not install project integration. Use `/edw-doc:sync` in Claude for AI explanations and automatic integration.
 
-## 7. Update the plugin after pulling a new release
+## 7. Update the installed plugin
 
-Updating the plugin and syncing a project's documentation are separate actions. **No rebuild or reinstall of dependencies is needed.**
+Close older Claude sessions. In your terminal:
 
-The regular update steps below apply once you have installed `edw-doc`. For an older `doc-vault` installation, complete the one-time rename upgrade first.
-
-### Upgrading from Doc Vault 0.1.3 or earlier
-
-Close the old Claude session and pull the updated plugin checkout. Replace the example paths with your existing folders. In your **terminal**:
-
-```sh
-cd "C:\tools\edw-doc-plugin"
+```powershell
+cd "C:\tools\edw-ai-toolkit"
 git pull
+cd "C:\tools\edw-ai-toolkit\plugins\edw-doc"
 npm run check
-claude plugin disable doc-vault@doc-vault-tools --scope user
-claude plugin marketplace add "C:\tools\edw-doc-plugin"
-claude plugin install edw-doc@edw-doc-tools --scope user
-claude plugin list
-```
-
-The catalog is now named `edw-doc-tools`. Register it explicitly: updating the old `doc-vault-tools` catalog alone does not install the renamed plugin. If Claude reports that `edw-doc-tools` is already registered, refresh it with `claude plugin marketplace update edw-doc-tools` and continue. Keep the old plugin disabled so its hooks do not run alongside the new one. If you installed in another scope, use that same scope when disabling and installing.
-
-For each project where local integration was previously enabled, run:
-
-```sh
-node "C:\tools\edw-doc-plugin\scripts\cli.mjs" setup --root "C:\projects\my-project"
-node "C:\tools\edw-doc-plugin\scripts\cli.mjs" setup-status --root "C:\projects\my-project"
-```
-
-Include the same `--vault-name` if you use a custom name. Existing owned integration files under `.claude/doc-vault/` stay in place; setup updates unchanged instructions to `/edw-doc:*` without creating a second integration. Inspect preservation warnings if you edited those instructions. Existing `edw-doc/` documentation and personal annotations remain compatible; no vault move or rebuild is required.
-
-Start a fresh Claude session in the target project and run `/edw-doc:status`. Confirm version **0.2.0** and the intended root. The version upgrade can mark prior explanations stale and queue fresh analysis; run `/edw-doc:sync`, check coverage, and repeat standards or review when needed. Previous prose is archived and personal annotations are preserved. Old `/doc-vault:*` commands are replaced by `/edw-doc:*`.
-
-If you only used `--plugin-dir`, skip marketplace installation and disabling: pull the checkout, repeat local setup if applicable, and restart with `--plugin-dir` pointing to that same checkout.
-
-### Later updates to EDW Doc
-
-Close the old Claude session. In your **terminal**:
-
-```sh
-cd "C:\tools\edw-doc-plugin"
-git pull
-npm run check
-```
-
-For a marketplace installation, refresh the installed plugin too:
-
-```sh
 claude plugin marketplace update edw-doc-tools
 claude plugin update edw-doc@edw-doc-tools --scope user
 claude plugin list
 ```
 
-These examples use the user scope selected during installation. If your team installed in another scope, use that same scope when updating. If you use only `--plugin-dir`, skip these marketplace commands.
+Use the original installation scope if it differs. For temporary `--plugin-dir` use, skip marketplace commands and restart against the updated plugin folder. There is no dependency reinstall or compilation step.
 
-For projects where you previously enabled local setup, repeat `setup` with the same target root and vault name. This updates unchanged owned instructions and preserves user edits; inspect any reported conflicts.
+Start Claude again in the target project, run `/edw-doc:status` to verify the loaded version, then `/edw-doc:sync`. Approved sync also ensures project integration and reports preserved edits or conflicts. Pulling toolkit code alone does not refresh cached installations or existing AI explanations. Version changes can mark earlier explanations stale; previous prose is archived and personal annotations are preserved.
 
-Start a fresh Claude session in your target project. Run `/edw-doc:status` to verify the loaded version, then `/edw-doc:sync` to refresh the documentation. Run standards and review again when relevant. Pulling new plugin code alone does not refresh existing AI explanations.
+### Upgrading from Doc Vault 0.1.3 or earlier
 
-## 8. Working across the team and different machines
+Disable the older plugin if still installed, so duplicate hooks do not run:
 
-The generated vault is ignored and local. A normal Git push or pull **does not share** `edw-doc/`, assessments, or personal annotations. Each teammate builds a vault on their own workstation. The optional local setup must also be performed separately for each checkout where it is wanted.
+```powershell
+claude plugin disable doc-vault@doc-vault-tools --scope user
+```
 
-Generated files stay local, but the source evidence used for AI analysis is processed through your configured Claude model/provider. Follow the team's existing repository-access and provider rules.
+Then register the toolkit catalog and install `edw-doc@edw-doc-tools` using section 3. If the old plugin was already removed, skip disabling it. A normal update of the old plugin identity does not install the renamed one.
 
-## Quick troubleshooting
+Restart Claude and run `/edw-doc:sync`. Existing owned `.claude/doc-vault/` integration is reused; existing `edw-doc/` documentation and annotations need no move. Commands now use `/edw-doc:*`. A much older generated `doc-vault/` vault requires the separate [explicit vault migration](docs/installation.md#moving-a-010-vault).
 
-| Problem | What to check |
+## 8. Advanced setup, inspection, and repair
+
+Use the following only to inspect or set up integration without running AI analysis, or to repair missing previously owned files:
+
+```powershell
+node "C:\tools\edw-ai-toolkit\plugins\edw-doc\scripts\cli.mjs" setup --root "C:\projects\data-control-framework"
+node "C:\tools\edw-ai-toolkit\plugins\edw-doc\scripts\cli.mjs" setup-status --root "C:\projects\data-control-framework"
+```
+
+Standalone setup does not build the vault. It preserves edited files and existing configuration, including `maintenance.enabled: false`; a missing configuration is repaired with maintenance disabled. Review its warnings. To select a custom vault before first use, append `--vault-name project-docs` and keep the same name on later explicit setup calls. Do not manually rename or merge generated vaults.
+
+Each teammate keeps local documentation and integration in each target checkout. Normal Git push/pull does not share the ignored vault, assessments, or annotations. Source evidence sent for analysis follows the configured Claude provider's data policies; local storage does not imply local inference.
+
+## Troubleshooting
+
+| Problem | Check |
 |---|---|
-| `/edw-doc:*` commands are missing | Check `claude plugin list`, the enabled state, and the installation path. Restart Claude; for temporary loading, include `--plugin-dir` again. |
-| An old version still appears | Refresh the marketplace and update the installed plugin, then fully restart Claude. Confirm you updated the same checkout used by the installation. |
-| Approval fails or tools are unavailable | Check Node and Claude versions, plugin loading, and organization policies. Restart so both hooks and tools load. See [run approval](docs/run-approval.md). |
-| Standards says the snapshot is missing or stale | Run `build` for a new vault or `sync` for an existing one, then retry standards. |
-| Status is fresh but files are still unassessed | File freshness and completed AI assessment are separate. Continue the remaining standards work and recheck coverage. |
-| An update reports a manually edited generated note | Preserve your text in an annotation or backup first. Review the reported conflict; do not delete state or force an overwrite. |
-| Reminders do not appear | Check `setup-status`, maintenance settings, and whether a vault exists. Hooks run only at supported events while Claude is active. |
+| Invalid marketplace source format | Run from toolkit root with `claude plugin marketplace add ./`; include the slash. |
+| Plugin not found in the catalog | Root catalog name must be `edw-doc-tools`; plugin name `edw-doc`; source must match the actual `./plugins/edw-doc` or `./plugins/doc-vault` folder. |
+| Slash commands are missing or old | Inspect `claude plugin list`, marketplace location, enabled state, and version. Update the installed copy and fully restart Claude. |
+| Build created no `.claude` | Verify version 0.2.1 and target root, then inspect the integration result. Earlier builds and static CLI scans do not perform setup; non-Git targets report a skip. Check `setup-status` or explicit setup for conflicts. |
+| No root `CLAUDE.md` | Check for an existing `.claude/CLAUDE.md`, which can be reused. A deleted but still tracked root file or an edited existing adapter is preserved; inspect setup warnings. Use the exact uppercase filename. |
+| Folder is still visible in the editor | Ignoring does not hide a folder from the explorer. Check Git's actual status as shown below. |
+| Extra permission prompts | Check host version, trust, loaded hooks/tools, and organizational policy; see the host approval checklist. |
+| Files remain unassessed | Current inventory and completed analysis are separate. Continue remaining scope and recheck status. |
+| Manually edited managed note | Preserve your text in an annotation or backup and resolve the reported conflict; do not delete state to force an overwrite. |
+| No maintenance reminders | Check integration status, maintenance settings, and whether a vault exists. Hooks require supported events while Claude is active. |
 
-For more detail, see [installation](docs/installation.md), [vault navigation](docs/vault-layout.md), [standards](docs/standards.md), and [known limits](docs/limitations.md). Claude's official documentation covers [plugin installation and marketplaces](https://code.claude.com/docs/en/discover-plugins) and [plugin update commands](https://code.claude.com/docs/en/plugins-reference#plugin-update).
+From the **target project's Git root**, verify ignoring:
+
+```powershell
+git check-ignore -v --no-index -- edw-doc/
+git ls-files -- edw-doc/
+git status --short --untracked-files=all -- edw-doc/
+```
+
+`/edw-doc/` in that root `.gitignore` matches the root vault. Removing the leading slash broadens the rule to matching folders anywhere below it; it should not be necessary for the default root vault. An ignore match plus empty output from the other two commands means Git ignores it correctly. Tracked files remain tracked; this plugin never untracks them.
+
+See [installation details](docs/installation.md), [vault navigation](docs/vault-layout.md), [standards](docs/standards.md), and [known limits](docs/limitations.md). Host commands follow Claude's [marketplace documentation](https://code.claude.com/docs/en/plugin-marketplaces) and [plugin command reference](https://code.claude.com/docs/en/plugins-reference).

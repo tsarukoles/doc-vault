@@ -4,7 +4,8 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { sha256, rootDirectory, relativePath, validateVaultName, checkedPath, readBytes, makeDirectory, writeAtomic, removeOwnedFile, ensureIgnore } from './security.mjs';
-import { inventory, identityAndChanges, stripContent, inventoryDigest, gitState, assertUntrackedVault, ignoreDiagnostics } from './inventory.mjs';
+import { inventory, identityAndChanges, stripContent, inventoryDigest, gitState, gitRead, assertUntrackedVault, assertIgnoredOutputs, ignoreDiagnostics } from './inventory.mjs';
+import { installIntegration, integrationStatus } from './integration.mjs';
 import { analyzeRepository } from './analyze.mjs';
 import { renderVault, notePath, renderAnalysisIndex } from './render.mjs';
 import { inspectWorkbook } from './readers.mjs';
@@ -73,12 +74,13 @@ export async function createEngine(target,{vaultName='edw-doc'}={}) {
     // Check the exceptional write before creating the vault.
     checkedPath(root,'.gitignore',{allowMissing:true,write:true});
     ensureIgnore(root,vaultName);
+    assertIgnoredOutputs(root,vaultName);
     makeDirectory(root,vaultName);
     makeDirectory(vault(),'.system');
     if(!fs.existsSync(vaultFile('.system/owner.json',true))) writeAtomic(vault(),'.system/owner.json',JSON.stringify({product:PRODUCT,schema_version:SCHEMA_VERSION})+'\n');
   }
-  async function locked(action,{init=false}={}) {
-    if(init) initialize(); else {assertVaultOwnership();requireState();}
+  function clearInactiveWriter() {
+    if(!fs.existsSync(vault()))return;
     const lockRelative='.system/write-lock.json';
     const lock=vaultFile(lockRelative,true);
     if(fs.existsSync(lock)) {
@@ -90,6 +92,15 @@ export async function createEngine(target,{vaultName='edw-doc'}={}) {
       if(active) throw new Error('Another vault writer is active, or its lock needs inspection.');
       removeOwnedFile(vault(),lockRelative);
     }
+  }
+  async function locked(action,{init=false}={}) {
+    assertVaultOwnership();
+    // An existing writer must block all setup/ignore mutations, not only the
+    // later documentation publication. The exclusive create covers races.
+    clearInactiveWriter();
+    if(init) initialize(); else requireState();
+    const lockRelative='.system/write-lock.json';
+    const lock=vaultFile(lockRelative,true);
     const token=crypto.randomBytes(12).toString('hex');
     fs.writeFileSync(lock,JSON.stringify({pid:process.pid,host:os.hostname(),token,created_at:new Date().toISOString()}),{flag:'wx',mode:0o600});
     try {return await action();}
@@ -266,15 +277,28 @@ export async function createEngine(target,{vaultName='edw-doc'}={}) {
 
   const engine={
     root,vaultName,version:VERSION,
-    async scan() {return locked(async()=>{
+    async scan({integrate=false}={}) {
+      const integrationRoot=integrate?gitRead(root,['rev-parse','--show-toplevel'])?.trim():null;
+      if(integrationRoot&&rootDirectory(integrationRoot)!==root)throw new Error(`Automatic Claude integration requires the Git repository root ${integrationRoot}. The configured root ${root} is a subdirectory; correct EDW_DOC_ROOT or launch from the repository root. No project files were changed.`);
+      return locked(async()=>{
       recoverPublication();
+      let integration;
+      if(integrate) {
+        assertVaultOwnership();
+        if(integrationRoot) integration=installIntegration(root,{vaultName});
+        else {
+          // Non-Git analysis remains supported; inaccessible Git metadata fails
+          // closed in assertVaultOwnership instead of silently skipping setup.
+          integration={...integrationStatus(root),skipped:true,reason:'Automatic Claude integration requires a Git repository root. The source folder can still be documented.'};
+        }
+      }
       const previous=readState();
       const {records,changes}=currentRecords(previous);
       const digest=inventoryDigest(records);
       const git=gitState(root);
       const pending=fs.existsSync(vaultFile('.system/pending.json',true));
       const standards=reconcileStandards(previous?.standards,records,catalog(),new Date().toISOString());
-      if(previous&&previous.version===VERSION&&previous.snapshot.source_digest===digest&&previous.snapshot.head===git.head&&!pending&&standardsFingerprint(standards)===standardsFingerprint(previous.standards)) return {snapshot:previous.snapshot,changes,coverage:summary(records),profile:previous.analysis.profile,vault:vaultName,root,unchanged:true,invalidated_note_paths:Object.keys(previous.needs_analysis||{}),standards:standardsCoverage(previous),ignore:ignoreDiagnostics(root,vaultName)};
+      if(previous&&previous.version===VERSION&&previous.snapshot.source_digest===digest&&previous.snapshot.head===git.head&&!pending&&standardsFingerprint(standards)===standardsFingerprint(previous.standards)) return {snapshot:previous.snapshot,changes,coverage:summary(records),profile:previous.analysis.profile,vault:vaultName,root,unchanged:true,invalidated_note_paths:Object.keys(previous.needs_analysis||{}),standards:standardsCoverage(previous),ignore:ignoreDiagnostics(root,vaultName),integration:integration??integrationStatus(root)};
       const created_at=new Date().toISOString();
       const snapshot={id:`s_${sha256(`${digest}|${git.head}|${created_at}`).slice(0,20)}`,created_at,head:git.head,branch:git.branch,source_digest:digest};
       for(const record of records) {
@@ -326,19 +350,19 @@ export async function createEngine(target,{vaultName='edw-doc'}={}) {
       state.snapshot.source_digest=inventoryDigest(records.map(({analyzed_at,...r})=>r));
       assertCurrent(state);
       publishBatch(outputs,state,previous);
-      return {snapshot,changes,coverage:state.coverage,profile:analysis.profile,vault:vaultName,root,invalidated_notes:invalidated,invalidated_note_paths:Object.keys(state.needs_analysis),standards:standardsCoverage(state),ignore:ignoreDiagnostics(root,vaultName)};
+      return {snapshot,changes,coverage:state.coverage,profile:analysis.profile,vault:vaultName,root,invalidated_notes:invalidated,invalidated_note_paths:Object.keys(state.needs_analysis),standards:standardsCoverage(state),ignore:ignoreDiagnostics(root,vaultName),integration:integration??integrationStatus(root)};
     },{init:true});},
-    async refresh(){return engine.scan();},
+    async refresh(options){return engine.scan(options);},
     async status(){
       const state=readState();
-      if(!state)return {initialized:false,fresh:false,version:VERSION,vault:vaultName,root,ignore:ignoreDiagnostics(root,vaultName)};
+      if(!state)return {initialized:false,fresh:false,version:VERSION,vault:vaultName,root,ignore:ignoreDiagnostics(root,vaultName),integration:integrationStatus(root)};
       const {records,changes}=currentRecords(state);
       const git=gitState(root);
       const pending=fs.existsSync(vaultFile('.system/pending.json',true));
       const currentStandards=reconcileStandards(state.standards,records,catalog(),state.snapshot.created_at);
       const standardsFresh=standardsFingerprint(currentStandards)===standardsFingerprint(state.standards);
       const liveState={...state,records,standards:currentStandards,analysis:noChanges(changes)?state.analysis:analyzeRepository(records)};
-      return {initialized:true,fresh:noChanges(changes)&&state.version===VERSION&&state.snapshot.head===git.head&&!pending&&standardsFresh,changes,version:VERSION,generated_version:state.version,snapshot:state.snapshot,coverage:summary(records),pending_update:pending,pending_analysis:Object.keys(state.needs_analysis||{}).length,vault:vaultName,root,standards:standardsCoverage(liveState),ignore:ignoreDiagnostics(root,vaultName)};
+      return {initialized:true,fresh:noChanges(changes)&&state.version===VERSION&&state.snapshot.head===git.head&&!pending&&standardsFresh,changes,version:VERSION,generated_version:state.version,snapshot:state.snapshot,coverage:summary(records),pending_update:pending,pending_analysis:Object.keys(state.needs_analysis||{}).length,vault:vaultName,root,standards:standardsCoverage(liveState),ignore:ignoreDiagnostics(root,vaultName),integration:integrationStatus(root)};
     },
     async list({kind,offset=0,limit=100}={}){
       const state=requireState();

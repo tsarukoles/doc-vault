@@ -20,7 +20,7 @@ Use this before publishing a repository or release archive. This document does n
 
 ## Behavior and claims
 
-- Confirm ordinary analysis writes remain within the generated vault and controlled `.gitignore` exception in tested scenarios. Exercise the separate setup allowlist, tracked-file fallback, repeat installation, user edits, and clean removal with maintenance disabled afterward.
+- Confirm analysis writes remain within the generated vault and controlled ignore additions, with narrow integration allowed only during approved build/sync scans or explicit CLI setup. Exercise initial creation, tracked-instruction fallback, repeat setup, missing-file repair, user edits, disabled-maintenance preservation, and selective removal. Verify other command scopes, static CLI scans, and hooks do not install integration.
 - Exercise stale evidence, changed-note review, deletion, rename, invalid paths, and concurrent update handling.
 - Verify the source-as-data instruction boundary with a synthetic instruction-injection fixture.
 - Check that docs disclose lexical extraction, partial workbook support, provider processing, and host sandbox limits.

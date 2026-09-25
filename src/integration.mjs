@@ -102,7 +102,7 @@ function hasInstructionImport(root, entrypoint, layout) {
 }
 
 function instructionText(vaultName) {
-  return `# EDW Doc local maintenance\n\nThis file applies only to the EDW Doc documentation workflow. It does not restrict the host coding agent's normal, user-authorized repository work.\n\n1. Read source through the plugin's documentation tools; write generated documentation only inside \`${vaultName}/\`. Setup alone owns the local integration and narrow ignore-file additions.\n2. Hook notices are reminders only. Run \`/edw-doc:sync\` when the user requests documentation work; never pause or extend an ordinary coding task to force maintenance.\n3. Reconcile the current checkout before publication. Changed, new, renamed, and deleted sources can invalidate dependent notes, flows, onboarding pages, diagrams, and standards assessments. Preserve annotations and user-edited generated files.\n4. Request the single command approval through vault_begin when an EDW Doc skill starts, reuse its run_id across batches, and close it with vault_end. Respect declined approval and never retry it automatically.\n5. Distinguish current source coverage from completed AI review. Do not claim freshness, compliance, or human approval without evidence. Standards review and approval remain separate work.\n6. Explain purpose, inputs, outputs, ordered steps, checks, failure paths, and source-backed findings in simple language. Use numbered procedures when order matters, small Mermaid diagrams for supported flows, and ordinary wiki links for navigation.\n\nMaintenance runs during supported host events. External edits are caught at the next reconciliation; there is no always-on background AI worker. The optional command-line watcher performs static refresh only. Plugin hooks must be loaded for automatic event handling.\n`;
+  return `# EDW Doc local maintenance\n\nThis file applies only to the EDW Doc documentation workflow. It does not restrict the host coding agent's normal, user-authorized repository work.\n\n1. Read source through the plugin's documentation tools; write generated documentation only inside \`${vaultName}/\`. Approved build and sync runs also let the broker create or repair its owned local Claude integration and narrow ignore-file additions; explicit setup performs the same integration work. Preserve existing user content. Do not use native tools to edit source, settings, or scripts for this workflow.\n2. Hook notices are reminders only. Run \`/edw-doc:sync\` when the user requests documentation work; never pause or extend an ordinary coding task to force maintenance.\n3. Reconcile the current checkout before publication. Changed, new, renamed, and deleted sources can invalidate dependent notes, flows, onboarding pages, diagrams, and standards assessments. Preserve annotations and user-edited generated files.\n4. Request the single command approval through vault_begin when an EDW Doc skill starts, reuse its run_id across batches, and close it with vault_end. Respect declined approval and never retry it automatically.\n5. Distinguish current source coverage from completed AI review. Do not claim freshness, compliance, or human approval without evidence. Standards review and approval remain separate work.\n6. Explain purpose, inputs, outputs, ordered steps, checks, failure paths, and source-backed findings in simple language. Use numbered procedures when order matters, small Mermaid diagrams for supported flows, and ordinary wiki links for navigation.\n\nMaintenance runs during supported host events. External edits are caught at the next reconciliation; there is no always-on background AI worker. The optional command-line watcher performs static refresh only. Plugin hooks must be loaded for automatic event handling.\n`;
 }
 
 function configFor(vaultName) {
@@ -171,14 +171,24 @@ function appendRootIgnore(root) {
 function chooseEntrypoint(root, warnings, layout) {
   const candidates = ['CLAUDE.md', '.claude/CLAUDE.md', 'AGENTS.md', '.claude/AGENTS.md', 'CLAUDE.local.md', '.claude/CLAUDE.local.md', 'AGENT.md'];
   const present = new Set(candidates.filter(file => exists(root, file)));
+  const claude = ['CLAUDE.md', '.claude/CLAUDE.md'].filter(file => present.has(file));
+  // Other agents' guidance and Claude's local overrides are not a substitute
+  // for the project entrypoint. Add our own root file without changing them.
+  if (!claude.length) {
+    if (tracked(root, 'CLAUDE.md')) {
+      warnings.push('The missing root CLAUDE.md is tracked. Its deletion was preserved; setup uses the local rule adapter.');
+      return { path: layout.rule, kind: 'file' };
+    }
+    return { path: 'CLAUDE.md', kind: 'file' };
+  }
+  const imported = claude.find(file => hasInstructionImport(root, file, layout));
+  if (imported) return { path: imported, kind: 'reuse' };
   if (present.has('CLAUDE.local.md') || present.has('.claude/CLAUDE.local.md')) {
     warnings.push('Existing local Claude instructions were preserved; the ignored rule adapter avoids changing instruction precedence.');
     return { path: layout.rule, kind: 'file' };
   }
-  const claude = ['CLAUDE.md', '.claude/CLAUDE.md'].filter(file => present.has(file));
   if (claude.length === 1) {
     const file = claude[0];
-    if (hasInstructionImport(root, file, layout)) return { path: file, kind: 'reuse' };
     if (!tracked(root, file) && ignored(root, file)) {
       try {
         const bytes = readBytes(root, file, 1024 * 1024);
@@ -251,6 +261,7 @@ export function installIntegration(rootInput, options = {}) {
   const layout = selectLayout(root);
   const warnings = [];
   const changes = [];
+  const repairs = [];
   const prior = loadManifest(root, layout);
   const vaultName = options.vaultName ?? prior?.vaultName ?? 'edw-doc';
   validateVaultName(vaultName);
@@ -265,6 +276,9 @@ export function installIntegration(rootInput, options = {}) {
   const planned = [];
   if (!prior) {
     assertNoOrphanedLegacyIntegration(root);
+    for (const file of [layout.instructions, layout.config, layout.rule]) {
+      if (exists(root, file, { writable: true })) throw new Error(`Integration namespace collision; existing file preserved: ${file}`);
+    }
     const selected = chooseEntrypoint(root, warnings, layout);
     state.entrypoint = selected.path;
     for (const file of [layout.instructions, layout.config, ...(selected.kind === 'file' ? [selected.path] : [])]) {
@@ -289,39 +303,86 @@ export function installIntegration(rootInput, options = {}) {
       } else warnings.push(`Existing import reused in ${selected.path}; setup does not own or remove that reference.`);
     }
   } else {
+    const oldRule = state.entrypoint === layout.rule ? state.entries.find(entry => entry.path === layout.rule && entry.kind === 'file') : null;
+    const oldRuleBytes = oldRule ? currentBytes(root, layout.rule) : null;
+    const missingClaude = !exists(root, 'CLAUDE.md') && !exists(root, '.claude/CLAUDE.md');
+    const replaceRule = oldRule && missingClaude && !tracked(root, 'CLAUDE.md') && (!oldRuleBytes || sha256(oldRuleBytes) === oldRule.sha256);
     for (const entry of state.entries) {
       requireUntracked(root, entry.path);
+      if (replaceRule && entry === oldRule) continue;
       const before = currentBytes(root, entry.path);
       if (entry.path === layout.config) {
         if (before) validConfig(JSON.parse(before.toString('utf8')), vaultName);
-        else warnings.push('Configuration is missing; maintenance remains disabled. Remove and set up the integration to restore it.');
+        else {
+          // A hash cannot recover a user's deleted maintenance preference.
+          // Restore a usable config without turning a possible opt-out on.
+          const content = Buffer.from(json({ ...configFor(vaultName), maintenance: { enabled: false } }));
+          planned.push({ path: entry.path, content, before: null });
+          entry.sha256 = sha256(content);
+          repairs.push(entry.path);
+          warnings.push('Missing configuration restored for the original vault with maintenance disabled; review config.json before enabling automatic maintenance.');
+        }
         continue;
       }
       if (entry.kind === 'block') {
-        if (!before || occurrences(before, Buffer.from(entry.content)).length !== 1) warnings.push(`Edited or missing integration block preserved: ${entry.path}`);
+        if (!before) {
+          planned.push({ path: entry.path, content: Buffer.from(entry.content), before: null });
+          repairs.push(entry.path);
+          warnings.push(`Missing instruction entrypoint restored with its owned integration block only: ${entry.path}. Previous user text cannot be recovered by setup.`);
+        } else if (occurrences(before, Buffer.from(entry.content)).length !== 1) warnings.push(`Edited integration block preserved: ${entry.path}`);
         continue;
       }
-      if (!before || sha256(before) !== entry.sha256) { warnings.push(`Edited or missing integration file preserved: ${entry.path}`); continue; }
+      if (before && sha256(before) !== entry.sha256) { warnings.push(`Edited integration file preserved: ${entry.path}`); continue; }
       const content = Buffer.from(desiredFile(entry.path, vaultName, layout));
-      if (!content.equals(before)) { planned.push({ path: entry.path, content, before }); entry.sha256 = sha256(content); }
+      if (!before || !content.equals(before)) { planned.push({ path: entry.path, content, before }); entry.sha256 = sha256(content); }
+      if (!before) repairs.push(entry.path);
+    }
+    if (replaceRule) {
+      const content = Buffer.from(desiredFile('CLAUDE.md', vaultName, layout));
+      planned.push({ path: 'CLAUDE.md', content, before: null });
+      if (oldRuleBytes) planned.push({ path: layout.rule, content: null, before: oldRuleBytes });
+      state.entries = state.entries.filter(entry => entry !== oldRule);
+      state.entries.push({ path: 'CLAUDE.md', kind: 'file', sha256: sha256(content) });
+      state.entrypoint = 'CLAUDE.md';
+      repairs.push('CLAUDE.md');
+      warnings.push('Missing root CLAUDE.md created; its unchanged owned rule adapter was retired to avoid duplicate instructions.');
+    } else if (oldRule && missingClaude) {
+      warnings.push('The existing rule adapter was retained because it was edited or the missing root CLAUDE.md is tracked; no duplicate root entrypoint was created.');
+    } else if (!state.entries.some(entry => entry.path === state.entrypoint) && !exists(root, state.entrypoint)) {
+      // A reused file was never ours to reconstruct. If it disappeared, add
+      // only a fresh safe entrypoint, leaving tracked deletions untouched.
+      const candidate = chooseEntrypoint(root, warnings, layout);
+      const selected = candidate.kind === 'block' ? { path: layout.rule, kind: 'file' } : candidate;
+      state.entrypoint = selected.path;
+      if (selected.kind === 'file') {
+        requireUntracked(root, selected.path);
+        if (exists(root, selected.path, { writable: true })) throw new Error(`Integration namespace collision; existing file preserved: ${selected.path}`);
+        const content = Buffer.from(desiredFile(selected.path, vaultName, layout));
+        planned.push({ path: selected.path, content, before: null });
+        state.entries.push({ path: selected.path, kind: 'file', sha256: sha256(content) });
+        repairs.push(selected.path);
+      }
+      warnings.push(`The missing unowned instruction entrypoint was replaced with a safe reference in ${selected.path}; previous user text was not reconstructed.`);
     }
   }
   // Preflight all destinations before even the narrow ignore-file mutation.
   for (const operation of planned) requireUntracked(root, operation.path);
   if (ensureIgnore(root, vaultName)) changes.push('.gitignore');
-  if (!prior && state.entries.some(entry => entry.path === 'CLAUDE.md' && entry.kind === 'file') && appendRootIgnore(root)) changes.push('.gitignore');
+  const recreatesRoot = planned.some(operation => operation.path === 'CLAUDE.md' && operation.before === null);
+  if ((recreatesRoot || state.entries.some(entry => entry.path === 'CLAUDE.md' && entry.kind === 'file')) && appendRootIgnore(root)) changes.push('.gitignore');
   for (const operation of planned) {
     requireUntracked(root, operation.path);
     const actual = currentBytes(root, operation.path);
     if (operation.before ? !actual?.equals(operation.before) : actual !== null) throw new Error(`Integration destination changed during setup: ${operation.path}`);
-    writeAtomic(root, operation.path, operation.content);
+    if (operation.content === null) removeOwnedFile(root, operation.path);
+    else writeAtomic(root, operation.path, operation.content);
     changes.push(operation.path);
   }
   requireUntracked(root, layout.manifest);
   const nextManifest = json(state);
   if (!exists(root, layout.manifest) || readBytes(root, layout.manifest).toString('utf8') !== nextManifest) { writeAtomic(root, layout.manifest, nextManifest); changes.push(layout.manifest); }
   const status = integrationStatus(root);
-  return { ...status, changes: [...new Set(changes)], warnings: [...new Set([...warnings, ...status.warnings])] };
+  return { ...status, changes: [...new Set(changes)], repairs, warnings: [...new Set([...warnings, ...status.warnings])] };
 }
 
 export function removeIntegration(rootInput) {

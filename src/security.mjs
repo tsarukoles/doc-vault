@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { isUtf8 } from 'node:buffer';
 
 export const sha256 = value => crypto.createHash('sha256').update(value).digest('hex');
 export const posix = value => value.split(path.sep).join('/');
@@ -100,9 +101,12 @@ export function ignorePlan(root, vaultName) {
   const ignorePath = checkedPath(root, '.gitignore', { allowMissing: true });
   const exists = fs.existsSync(ignorePath);
   const original = exists ? readBytes(root, '.gitignore', 1024 * 1024) : Buffer.alloc(0);
+  if (original.includes(0) || !isUtf8(original)) {
+    throw new Error('The root .gitignore must use UTF-8 text. Its encoding is unsupported; no ignore rules were appended. Convert it to UTF-8 and retry.');
+  }
   const text = original.toString('utf8');
   const requiredRules = [`/${vaultName}/`, '/.claude/'];
-  const meaningful = text.split(/\r?\n/).filter(line => line.trim() && !line.startsWith('#'));
+  const meaningful = text.replace(/^\ufeff/, '').split(/\r?\n/).filter(line => line.trim() && !line.startsWith('#'));
   // A later negation may re-include a protected path. Appending a final root
   // rule is conservative and avoids interpreting Git's pattern language here.
   const missingRules = requiredRules.filter(rule => {

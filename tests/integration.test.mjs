@@ -87,15 +87,41 @@ test('existing ignored .claude/CLAUDE.md gets an import relative to its containi
   assert.equal(has(root, 'CLAUDE.md'), false);
 });
 
-test('AGENTS, custom AGENT, and existing CLAUDE.local precedence use a conservative rule adapter', async t => {
-  for (const file of ['AGENTS.md', 'AGENT.md', 'CLAUDE.local.md', '.claude/AGENTS.md']) {
+test('other agent instructions and local overrides do not prevent creating missing project CLAUDE.md', async t => {
+  for (const file of ['AGENTS.md', 'AGENT.md', 'CLAUDE.local.md', '.claude/AGENTS.md', '.claude/CLAUDE.local.md']) {
     const root = await repo(t);
     write(root, file, '# Preserve this\n');
-    assert.equal(installIntegration(root).entrypoint, RULE);
+    assert.equal(installIntegration(root).entrypoint, 'CLAUDE.md');
     assert.equal(read(root, file), '# Preserve this\n');
-    assert.equal(has(root, 'CLAUDE.md'), false);
+    assert.match(read(root, 'CLAUDE.md'), /@\.claude\/edw-doc\/instructions\.md/);
+    assert.equal(has(root, RULE), false);
     if (file !== 'CLAUDE.local.md') assert.equal(has(root, 'CLAUDE.local.md'), false);
   }
+});
+
+test('existing unrelated .claude settings and scripts survive setup with a new root entrypoint', async t => {
+  const root = await repo(t);
+  const settings = '{"permissions":{"deny":["Bash(rm:*)"]}}\n';
+  const script = 'echo "project helper"\n';
+  write(root, '.claude/settings.json', settings);
+  write(root, '.claude/scripts/project-helper.sh', script);
+  git(root, 'add', '--', '.claude/settings.json', '.claude/scripts/project-helper.sh');
+  const result = installIntegration(root);
+  assert.equal(result.entrypoint, 'CLAUDE.md');
+  assert.equal(read(root, '.claude/settings.json'), settings);
+  assert.equal(read(root, '.claude/scripts/project-helper.sh'), script);
+  assert.deepEqual(fs.readdirSync(path.join(root, '.claude/edw-doc')).sort(), ['config.json', 'instructions.md', 'manifest.json']);
+  assert.equal(installIntegration(root).changes.length, 0);
+});
+
+test('project instructions plus a local override still use a single preserved rule adapter', async t => {
+  const root = await repo(t);
+  write(root, 'CLAUDE.md', '# Shared instructions\n');
+  write(root, 'CLAUDE.local.md', '# Local override\n');
+  assert.equal(installIntegration(root).entrypoint, RULE);
+  assert.equal(read(root, 'CLAUDE.md'), '# Shared instructions\n');
+  assert.equal(read(root, 'CLAUDE.local.md'), '# Local override\n');
+  assert.equal(installIntegration(root).changes.length, 0);
 });
 
 test('existing direct import is reused, never duplicated or removed as an owned block', async t => {
@@ -121,6 +147,20 @@ test('a tracked instruction file with an existing import is reused without an ex
   const removal = removeIntegration(root);
   assert.ok(removal.warnings.some(warning => warning.includes('unowned instruction reference')));
   assert.equal(read(root, 'CLAUDE.md'), original);
+});
+
+test('an existing instruction import is reused when local overrides or another project entrypoint exist', async t => {
+  for (const extra of ['CLAUDE.local.md', '.claude/CLAUDE.md']) {
+    const root = await repo(t);
+    const original = '# Shared\n@.claude/edw-doc/instructions.md\n';
+    write(root, 'CLAUDE.md', original);
+    write(root, extra, '# Additional preserved instructions\n');
+    const result = installIntegration(root);
+    assert.equal(result.entrypoint, 'CLAUDE.md');
+    assert.equal(has(root, RULE), false);
+    assert.equal(read(root, 'CLAUDE.md'), original);
+    assert.equal(read(root, extra), '# Additional preserved instructions\n');
+  }
 });
 
 test('imports inside fenced code, inline code, or comments never count as active references', async t => {
@@ -178,6 +218,125 @@ test('namespace collisions fail before any ignore or other integration change', 
     assert.throws(() => installIntegration(root), /collision|ownership/i);
     assert.deepEqual(await hashes(root), before);
   }
+});
+
+test('orphaned rule collisions fail even when setup would create a new root entrypoint', async t => {
+  const root = await repo(t);
+  write(root, RULE, '# Keep my existing adapter\n');
+  const before = await hashes(root);
+  assert.throws(() => installIntegration(root), /namespace collision/);
+  assert.deepEqual(await hashes(root), before);
+});
+
+test('reinstall repairs missing owned files for the original custom vault and reports each repair', async t => {
+  const root = await repo(t);
+  installIntegration(root, { vaultName: 'team-docs' });
+  fs.unlinkSync(path.join(root, INSTRUCTIONS));
+  fs.unlinkSync(path.join(root, 'CLAUDE.md'));
+  write(root, CONFIG, JSON.stringify({ version: 1, vaultName: 'team-docs', maintenance: { enabled: false } }));
+  const configBefore = read(root, CONFIG);
+  const result = installIntegration(root);
+  assert.deepEqual(new Set(result.repairs), new Set([INSTRUCTIONS, 'CLAUDE.md']));
+  assert.match(read(root, INSTRUCTIONS), /`team-docs\//);
+  assert.match(read(root, 'CLAUDE.md'), /@\.claude\/edw-doc\/instructions\.md/);
+  assert.equal(read(root, CONFIG), configBefore);
+  assert.equal(result.maintenanceEnabled, false);
+  const before = await hashes(root);
+  assert.deepEqual(installIntegration(root).repairs, []);
+  assert.deepEqual(await hashes(root), before);
+});
+
+test('missing config is restored without silently re-enabling a deleted maintenance opt-out', async t => {
+  const root = await repo(t);
+  installIntegration(root, { vaultName: 'team-docs' });
+  write(root, CONFIG, JSON.stringify({ version: 1, vaultName: 'team-docs', maintenance: { enabled: false } }));
+  fs.unlinkSync(path.join(root, CONFIG));
+  const result = installIntegration(root);
+  assert.deepEqual(result.repairs, [CONFIG]);
+  assert.deepEqual(JSON.parse(read(root, CONFIG)), { version: 1, vaultName: 'team-docs', maintenance: { enabled: false } });
+  assert.equal(result.maintenanceEnabled, false);
+  assert.ok(result.warnings.some(warning => warning.includes('maintenance disabled')));
+  assert.deepEqual(installIntegration(root).changes, []);
+});
+
+test('a missing entrypoint with an owned import block is repaired without inventing previous user text', async t => {
+  const root = await repo(t);
+  write(root, '.gitignore', '/.claude/\n');
+  write(root, '.claude/CLAUDE.md', '# Previous user instructions\n');
+  installIntegration(root);
+  fs.unlinkSync(path.join(root, '.claude/CLAUDE.md'));
+  const result = installIntegration(root);
+  assert.deepEqual(result.repairs, ['.claude/CLAUDE.md']);
+  assert.equal(read(root, '.claude/CLAUDE.md'), '<!-- edw-doc:begin -->\n@edw-doc/instructions.md\n<!-- edw-doc:end -->\n');
+  assert.equal(result.maintenanceEnabled, true);
+  assert.ok(result.warnings.some(warning => warning.includes('Previous user text cannot be recovered')));
+  assert.equal(has(root, 'CLAUDE.md'), false);
+  assert.deepEqual(installIntegration(root).changes, []);
+});
+
+test('a recreated root import block is ignored again when its original ignore rule was deleted', async t => {
+  const root = await repo(t);
+  write(root, '.gitignore', '/CLAUDE.md\n');
+  write(root, 'CLAUDE.md', '# Previous local guidance\n');
+  installIntegration(root);
+  fs.unlinkSync(path.join(root, 'CLAUDE.md'));
+  write(root, '.gitignore', '/edw-doc/\n/.claude/\n');
+  const result = installIntegration(root);
+  assert.ok(result.repairs.includes('CLAUDE.md'));
+  assert.match(git(root, 'check-ignore', '--verbose', '--', 'CLAUDE.md'), /\/CLAUDE.md/);
+  assert.equal(git(root, 'status', '--porcelain', '--', 'CLAUDE.md').trim(), '');
+});
+
+test('deleting a reused untracked entrypoint creates a fresh owned root without recreating user content', async t => {
+  const root = await repo(t);
+  write(root, 'CLAUDE.md', '# My previous instructions\n@.claude/edw-doc/instructions.md\n');
+  installIntegration(root);
+  fs.unlinkSync(path.join(root, 'CLAUDE.md'));
+  const result = installIntegration(root);
+  assert.equal(result.entrypoint, 'CLAUDE.md');
+  assert.ok(result.repairs.includes('CLAUDE.md'));
+  assert.match(read(root, 'CLAUDE.md'), /<!-- edw-doc:begin -->/);
+  assert.doesNotMatch(read(root, 'CLAUDE.md'), /My previous instructions/);
+  assert.equal(result.maintenanceEnabled, true);
+  assert.deepEqual(installIntegration(root).changes, []);
+});
+
+test('deleting a reused tracked entrypoint uses a new adapter and preserves the tracked deletion', async t => {
+  const root = await repo(t);
+  write(root, 'CLAUDE.md', '# Shared\n@.claude/edw-doc/instructions.md\n');
+  git(root, 'add', '--', 'CLAUDE.md');
+  installIntegration(root);
+  fs.unlinkSync(path.join(root, 'CLAUDE.md'));
+  const result = installIntegration(root);
+  assert.equal(result.entrypoint, RULE);
+  assert.ok(result.repairs.includes(RULE));
+  assert.equal(has(root, 'CLAUDE.md'), false);
+  assert.equal(result.maintenanceEnabled, true);
+  assert.deepEqual(installIntegration(root).changes, []);
+});
+
+test('removing an import from an existing reused file remains a preserved opt-out', async t => {
+  const root = await repo(t);
+  write(root, 'CLAUDE.md', '# Shared\n@.claude/edw-doc/instructions.md\n');
+  installIntegration(root);
+  write(root, 'CLAUDE.md', '# Shared\nImport intentionally removed.\n');
+  const before = await hashes(root);
+  const result = installIntegration(root);
+  assert.equal(result.maintenanceEnabled, false);
+  assert.deepEqual(result.repairs, []);
+  assert.deepEqual(await hashes(root), before);
+});
+
+test('a missing owned adapter is recreated without modifying existing shared instructions', async t => {
+  const root = await repo(t);
+  write(root, 'CLAUDE.md', '# Shared instructions\n');
+  installIntegration(root);
+  fs.unlinkSync(path.join(root, RULE));
+  const result = installIntegration(root);
+  assert.deepEqual(result.repairs, [RULE]);
+  assert.equal(read(root, 'CLAUDE.md'), '# Shared instructions\n');
+  assert.match(read(root, RULE), /read `\.claude\/edw-doc\/instructions.md`/);
+  assert.equal(result.maintenanceEnabled, true);
 });
 
 test('a modified owned file and a valid user configuration are preserved on reinstall and removal', async t => {
@@ -371,18 +530,18 @@ test('legacy setup updates commands in place while preserving custom vaults, CRL
   assert.equal(read(root, 'team-docs/annotations/my-note.md'), '# My annotation\n');
 });
 
-test('legacy rule and owned root entrypoints upgrade without adding a second adapter', async t => {
+test('legacy rule-only and owned root entrypoints upgrade to one root entrypoint', async t => {
   for (const kind of ['rule', 'file']) {
     const root = await repo(t);
     const prior = legacyInstall(root, { kind });
     const result = installIntegration(root);
-    assert.equal(result.entrypoint, prior.entrypoint);
+    assert.equal(result.entrypoint, 'CLAUDE.md');
     assert.equal(result.maintenanceEnabled, true);
     assert.equal(has(root, MANIFEST), false);
     assert.equal(has(root, RULE), false);
     if (kind === 'rule') {
-      assert.match(read(root, prior.entrypoint), /^# EDW Doc integration/);
-      assert.match(read(root, prior.entrypoint), /\.claude\/doc-vault\/instructions.md/);
+      assert.equal(has(root, prior.entrypoint), false);
+      assert.match(read(root, 'CLAUDE.md'), /@\.claude\/doc-vault\/instructions.md/);
     }
     assert.deepEqual(removeIntegration(root).preserved, []);
     assert.equal(has(root, prior.manifest), false);
@@ -391,6 +550,38 @@ test('legacy rule and owned root entrypoints upgrade without adding a second ada
     assert.equal(fresh.vaultName, prior.vaultName);
     assert.equal(has(root, prior.instructions), false);
   }
+});
+
+test('missing owned legacy files are repaired in place without a second integration namespace', async t => {
+  const root = await repo(t);
+  const prior = legacyInstall(root, { kind: 'rule' });
+  fs.unlinkSync(path.join(root, prior.instructions));
+  fs.unlinkSync(path.join(root, prior.entrypoint));
+  const originalConfig = read(root, prior.config);
+  const result = installIntegration(root);
+  assert.deepEqual(new Set(result.repairs), new Set([prior.instructions, 'CLAUDE.md']));
+  assert.equal(result.integrationPath, '.claude/doc-vault');
+  assert.equal(result.vaultName, 'team-docs');
+  assert.equal(result.maintenanceEnabled, true);
+  assert.equal(read(root, prior.config), originalConfig);
+  assert.match(read(root, prior.instructions), /\/edw-doc:sync/);
+  assert.equal(has(root, prior.entrypoint), false);
+  assert.match(read(root, 'CLAUDE.md'), /@\.claude\/doc-vault\/instructions.md/);
+  assert.equal(has(root, MANIFEST), false);
+  assert.equal(has(root, RULE), false);
+  assert.deepEqual(installIntegration(root).changes, []);
+});
+
+test('an edited rule-only legacy entrypoint remains intact instead of adding duplicate root instructions', async t => {
+  const root = await repo(t);
+  const prior = legacyInstall(root, { kind: 'rule' });
+  write(root, prior.entrypoint, '# My edited adapter\n');
+  const result = installIntegration(root);
+  assert.equal(result.entrypoint, prior.entrypoint);
+  assert.equal(read(root, prior.entrypoint), '# My edited adapter\n');
+  assert.equal(has(root, 'CLAUDE.md'), false);
+  assert.equal(result.maintenanceEnabled, false);
+  assert.ok(result.warnings.some(warning => warning.includes('no duplicate root entrypoint')));
 });
 
 test('legacy user edits and disabled maintenance survive upgrade and removal', async t => {

@@ -1,8 +1,8 @@
 # Approval for an EDW Doc command
 
-Version 0.2.0 retains the one explicit approval per invocation introduced in 0.1.3, now under the `/edw-doc:*` command names. The command begins with `vault_begin`, reuses the returned `run_id` for all its broker operations and batches, and calls `vault_end` before returning. Declining the initial approval ends the command; the agent must not retry the prompt or switch to other tools.
+Version 0.2.1 retains one explicit approval per `/edw-doc:*` invocation and includes narrow automatic project integration for build and sync. The command begins with `vault_begin`, reuses the returned `run_id` for all its broker operations and batches, and calls `vault_end` before returning. Declining the initial approval ends the command; the agent must not retry the prompt or switch to other tools.
 
-The approval identifies the configured repository and the requested command. Source files remain read-only. The existing broker controls managed output paths, evidence, annotations, and the narrow root `.gitignore` additions. It does not grant shell execution, arbitrary writes, source edits, Git mutations, or external publication. The host's configured model still processes selected source evidence.
+The approval identifies the repository, requested command, and permitted writes. Source code remains read-only. Build and sync also disclose broker-controlled project integration: owned `.claude` files, a new root `CLAUDE.md` when needed, a supported instruction reference, and exact ignore additions. Existing instructions, settings, scripts, hooks, and configuration are preserved. The approval does not grant shell execution, arbitrary writes, source-code edits, Git mutations, or external publication. The host's configured model still processes selected source evidence.
 
 ## Required host
 
@@ -16,7 +16,8 @@ Skill tool grants clear on a new user message. Invoking the command again grants
 
 | Command | Broker capabilities after approval |
 |---|---|
-| `build`, `sync`, `audit`, `onboard` | Repository/context reads, inventory/refresh, managed draft publication and mechanical checks. |
+| `build`, `sync` | Repository/context reads, inventory/refresh with constrained project integration, managed draft publication, and mechanical checks. |
+| `audit`, `onboard` | Repository/context reads, inventory/refresh, managed draft publication, and mechanical checks; no integration installation. |
 | `standards` | Repository/context reads plus evidenced rule registration and assessments; no scan or general publication. |
 | `review` | Repository/context reads plus exact-revision review records; no corrected-note publication. |
 | `ask`, `status` | Read operations only. Use `onboard` when a saved guide is wanted. |
@@ -37,13 +38,14 @@ Follow the [rename upgrade instructions](installation.md#upgrade-from-the-old-pl
 
 In a small test repository, verify:
 
-1. Invoke `/edw-doc:build`. Approve `vault_begin` once; inspect that its prompt names the intended root and command.
+1. Invoke `/edw-doc:build` in a project without `.claude` or `CLAUDE.md`. Approve `vault_begin` once; inspect that its prompt names the root, command, and integration allowance. Verify owned `.claude` files and root `CLAUDE.md` are created and ignored, and the integration result is reported.
 2. Confirm ordinary context reads, source reads, scan, and publication do not prompt again. They must all include the same `run_id`.
 3. Repeat with `standards` and `sync`, including enough work to cross several batches or a compaction. Each new command gets one new approval.
 4. Decline the approval. No broker read or write from that invocation should execute and the command should finish without another attempt.
 5. Cancel a run, send a new prompt, and verify the previous token is rejected. Verify normal completion calls `vault_end` and subsequent use is rejected.
 6. Confirm `ask`/`status` cannot scan or publish, and `standards` cannot publish general notes. Source bytes and user annotations must remain intact.
-7. End an ordinary coding task while documentation is outdated. Its finish must not be blocked by EDW Doc.
+7. Repeat build/sync in a project with existing Claude instructions, settings, scripts, hooks, and disabled maintenance. Verify preservation and no duplicate imports. Confirm audit/onboard, plain static scans, and hooks do not install integration.
+8. End an ordinary coding task while documentation is outdated. Its finish must not be blocked by EDW Doc.
 
 Protocol and local boundary tests simulate dispatch after approval; they cannot prove that a real CLI displayed the prompt or inherited skill grants in a forked agent. Count actual prompts in the intended Claude CLI/provider environment before claiming the one-prompt experience is verified. Claude CLI was unavailable in the implementation environment.
 
